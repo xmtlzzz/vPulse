@@ -172,6 +172,35 @@ export async function probeSingleMonitorById(id: string): Promise<boolean> {
   }
 }
 
+export async function testConnectionProbe(
+  url: string,
+  method = 'GET'
+): Promise<{ success: boolean; statusCode?: number; latencyMs?: number; error?: string }> {
+  try {
+    const res = await fetch('/api/probe-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, method }),
+    })
+    if (res.ok) {
+      return await res.json()
+    }
+  } catch {
+    // fallback
+  }
+
+  // Client-side fallback test if backend is unavailable
+  const startTime = performance.now()
+  try {
+    const r = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
+    const latency = Math.round(performance.now() - startTime)
+    return { success: true, statusCode: 200, latencyMs: latency }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '无法连接'
+    return { success: false, error: msg }
+  }
+}
+
 export async function createNewMonitor(
   data: {
     name: string

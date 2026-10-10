@@ -255,6 +255,33 @@ export function edgeApiDevPlugin(): Plugin {
           return sendJson(res, { success: true, probed_count: results.length })
         }
 
+        // ── POST /api/probe-test (Live Connection Test Preview) ──────────
+        if (path === '/api/probe-test' && req.method === 'POST') {
+          const body = await readBody(req)
+          if (!body.url) return sendJson(res, { error: 'URL is required' }, 400)
+          const startTime = performance.now()
+          try {
+            const resp = await fetch(body.url, {
+              method: body.method || 'GET',
+              signal: AbortSignal.timeout(6000),
+              headers: { 'User-Agent': 'vPulse-HealthCheck/1.0' },
+            })
+            const latency = Math.round(performance.now() - startTime)
+            return sendJson(res, {
+              success: true,
+              statusCode: resp.status,
+              latencyMs: latency,
+              statusText: resp.statusText,
+            })
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : '连接超时或网络错误'
+            return sendJson(res, {
+              success: false,
+              error: msg,
+            })
+          }
+        }
+
         // ── GET /api/health ──────────────────────────────────────────────
         if (path === '/api/health') {
           return sendJson(res, {

@@ -200,6 +200,30 @@ export default {
       })
     }
 
+    // ── API: /api/probe-test (Live Connection Test Preview) ──────────────────
+    if (url.pathname === '/api/probe-test' && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { url?: string; method?: string }
+        if (!body.url) return jsonResponse({ error: 'URL is required' }, 400)
+        const startTime = performance.now()
+        const resp = await fetch(body.url, {
+          method: body.method || 'GET',
+          headers: { 'User-Agent': 'vPulse-HealthCheck/1.0' },
+          signal: AbortSignal.timeout(6000),
+        })
+        const latency = Math.round(performance.now() - startTime)
+        return jsonResponse({
+          success: true,
+          statusCode: resp.status,
+          latencyMs: latency,
+          statusText: resp.statusText,
+        })
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '连接超时或网络错误'
+        return jsonResponse({ success: false, error: msg })
+      }
+    }
+
     // ── API: /api/health (Self Health Check) ─────────────────────────────────
     if (url.pathname === '/api/health') {
       return jsonResponse({

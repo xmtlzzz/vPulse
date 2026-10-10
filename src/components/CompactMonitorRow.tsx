@@ -175,9 +175,13 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
         </div>
       </div>
 
-      {/* ── 2. Expanded Accordion Details Drawer ───────────────────────── */}
-      {isExpanded && (
-        <div className="border-t border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 px-4 py-5 sm:px-6 space-y-5 animate-in fade-in duration-200">
+      {/* ── 2. Expanded Accordion Details Drawer with GPU-accelerated Grid Animation ── */}
+      <div
+        className={`accordion-grid ${isExpanded ? 'is-expanded' : ''}`}
+        aria-hidden={!isExpanded}
+      >
+        <div className="accordion-inner">
+          <div className="border-t border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 px-4 py-5 sm:px-6 space-y-5">
           {/* A. Full Heartbeat Bar with Interactive Hover Inspection */}
           <div>
             <div className="flex items-center justify-between text-xs text-[var(--pulse-text-dim)] mb-2">
@@ -378,7 +382,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
-  )
+  </div>
+)
 }
