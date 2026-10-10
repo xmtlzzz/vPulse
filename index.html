@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>vPulse · 边缘服务状态监控与健康巡检</title>
+    <meta
+      name="description"
+      content="vPulse 实时服务状态监测看板，提供针对 vMaker、vBlog 及边缘 API 的实时可用性打点、延迟指标与 SSL 证书巡检。"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      ;(function () {
+        var t = localStorage.getItem('vpulse-theme')
+        var isDark =
+          t === 'dark' ||
+          (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (isDark) {
+          document.documentElement.classList.add('dark', 'theme-dark')
+        } else {
+          document.documentElement.classList.add('theme-light')
+        }
+      })()
+    </script>
+  </head>
+  <body class="bg-pulse-bg text-pulse-text antialiased transition-colors duration-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

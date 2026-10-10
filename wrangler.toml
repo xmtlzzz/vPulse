@@ -1,0 +1,30 @@
+# ==============================================================================
+# vPulse - Cloudflare Worker + D1 + Static Assets Configuration
+# ==============================================================================
+
+name = "vpulse"
+main = "worker/index.ts"
+compatibility_date = "2025-08-01"
+
+# ── Frontend Static Assets (Vite build dist) ──────────────────────────────────
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# ── Cloudflare D1 Database ────────────────────────────────────────────────────
+# Run: npx wrangler d1 create vpulse-db to obtain your real database_id
+[[d1_databases]]
+binding = "DB"
+database_name = "vpulse-db"
+database_id = "vpulse-db"
+
+# ── Automated Health Probes (Every 3 minutes) ─────────────────────────────────
+[triggers]
+crons = ["*/3 * * * *"]
+
+# ── Environment Variables ─────────────────────────────────────────────────────
+[vars]
+SITE_URL = "https://pulse.xmtlz.dev"
+APP_NAME = "vPulse"

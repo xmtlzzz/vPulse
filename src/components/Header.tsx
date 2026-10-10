@@ -1,0 +1,73 @@
+import React from 'react'
+import { Activity, RefreshCw } from 'lucide-react'
+import { ThemeToggle } from './ThemeToggle'
+
+interface HeaderProps {
+  isDark: boolean
+  onToggleTheme: () => void
+  isRefreshing: boolean
+  onRefresh: () => void
+  lastUpdated: number
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  isDark,
+  onToggleTheme,
+  isRefreshing,
+  onRefresh,
+}) => {
+  return (
+    <header className="border-b border-[var(--pulse-border)] bg-[var(--pulse-bg)]/80 backdrop-blur-md sticky top-0 z-40">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
+        {/* Brand */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] shadow-xs">
+            <Activity className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold tracking-tight text-[var(--pulse-text)]">
+                vPulse
+              </span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500 ring-1 ring-emerald-500/30">
+                Live
+              </span>
+            </div>
+            <p className="text-xs text-[var(--pulse-text-dim)]">
+              边缘分布式健康探针 · 自动化巡检
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-3">
+          {/* Live Indicator Pill */}
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs text-[var(--pulse-text-muted)]">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            </span>
+            <span>自动刷新中</span>
+          </div>
+
+          {/* Refresh Button */}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            type="button"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 text-xs font-medium text-[var(--pulse-text-muted)] transition-all hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] disabled:opacity-50"
+            title="立刻触发全量探活检测"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`}
+            />
+            <span className="hidden sm:inline">立即探活</span>
+          </button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
+        </div>
+      </div>
+    </header>
+  )
+}
