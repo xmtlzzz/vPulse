@@ -1,17 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
+import { getAdminToken, saveAdminToken } from '../lib/storage'
 import {
   X,
   Plus,
-  Globe,
   Sparkles,
   Check,
   Zap,
-  Code2,
   ChevronDown,
-  Copy,
   Database,
   Layers,
-  Server,
 } from 'lucide-react'
 import { createNewMonitor, testConnectionProbe } from '../lib/api'
 
@@ -21,6 +18,19 @@ interface AddMonitorModalProps {
   onSuccess: () => void
   existingGroups?: string[]
 }
+
+const HEALTH_EXAMPLE = `// 粘贴到你的任意 Cloudflare Worker 中暴露 KV/D1 深度探针:
+if (url.pathname === '/api/health') {
+  const t0 = performance.now();
+  // 测试 KV 读写或 D1 数据库查询
+  await env.MY_KV.get('__probe__'); // 或 await env.DB.prepare('SELECT 1').run();
+  const latency = Math.round(performance.now() - t0);
+  return Response.json({
+    status: 'UP',
+    components: { storage: { status: 'UP', latency_ms: latency } },
+    colo: request.cf?.colo || 'EDGE'
+  });
+}`
 
 const PRESETS = [
   {
@@ -48,7 +58,7 @@ const PRESETS = [
     url: 'https://',
     method: 'GET' as const,
     expectedStatus: 200,
-    hint: '探测前端静态网页、SPA 首屏可达性与 SSL 证书',
+    hint: '探测前端静态网页与 SPA 首屏 HTTP 可达性',
   },
   {
     label: '📦 CF R2 存储桶',
@@ -87,9 +97,9 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   const [customGroup, setCustomGroup] = useState('')
   const [method, setMethod] = useState<'GET' | 'HEAD'>('GET')
   const [expectedStatus, setExpectedStatus] = useState(200)
-  const [adminToken, setAdminToken] = useState(() => {
-    return localStorage.getItem('vpulse-admin-token') || ''
-  })
+  const [adminToken, setAdminToken] = useState(getAdminToken)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const testSequence = useRef(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -107,18 +117,34 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false)
 
   React.useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const dialog = dialogRef.current
+    const previousOverflow = document.body.style.overflow
+    if (isOpen && dialog && !dialog.open) {
+      dialog.showModal()
+      dialog.scrollTop = 0
+      document.body.style.overflow = 'hidden'
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+    if (!isOpen && dialog?.open) dialog.close()
+    return () => {
+      if (dialog?.open) dialog.close()
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isOpen])
 
-  if (!isOpen) return null
+  const containKeyboardFocus = (event: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key !== 'Tab') return
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], textarea:not(:disabled)'))
+      .filter(element => element.getClientRects().length > 0)
+    const first = controls[0], last = controls.at(-1)
+    if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus() }
+  }
+
+
 
   // Smart URL parser & auto-categorization
   const handleUrlChange = (newUrl: string) => {
+    testSequence.current++
     setUrl(newUrl)
     setTestState(null)
 
@@ -176,6 +202,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
       setCustomGroup(preset.group)
       setGroupMode('custom')
     }
+    testSequence.current++
     setName(preset.name)
     setUrl(preset.url)
     setMethod(preset.method)
@@ -189,9 +216,11 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
       return
     }
     setErrorMsg('')
+    const sequence = ++testSequence.current
     setTestState({ loading: true })
 
-    const res = await testConnectionProbe(url.trim(), method)
+    const res = await testConnectionProbe(url.trim(), method, expectedStatus, adminToken)
+    if (sequence !== testSequence.current) return
     if (res.success) {
       setTestState({
         loading: false,
@@ -209,21 +238,8 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   }
 
   const handleCopyCode = () => {
-    const code = `// 粘贴到你的任意 Cloudflare Worker 中暴露 KV/D1 深度探针:
-if (url.pathname === '/api/health') {
-  const t0 = performance.now();
-  // 测试 KV 读写或 D1 数据库查询
-  await env.MY_KV.get('__probe__'); // 或 await env.DB.prepare('SELECT 1').run();
-  const latency = Math.round(performance.now() - t0);
-  return Response.json({
-    status: 'UP',
-    storage_latency_ms: latency,
-    colo: request.cf?.colo || 'EDGE'
-  });
-}`
-    void navigator.clipboard.writeText(code)
-    setCopiedCode(true)
-    setTimeout(() => setCopiedCode(false), 2000)
+
+    void navigator.clipboard.writeText(HEALTH_EXAMPLE).then(() => { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000) }).catch(() => setErrorMsg('复制失败，请手动选择代码'))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -240,9 +256,7 @@ if (url.pathname === '/api/health') {
     setIsSubmitting(true)
     setErrorMsg('')
 
-    if (adminToken) {
-      localStorage.setItem('vpulse-admin-token', adminToken)
-    }
+    saveAdminToken(adminToken)
 
     const finalGroupName =
       groupMode === 'custom'
@@ -273,16 +287,16 @@ if (url.pathname === '/api/health') {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-xl rounded-2xl border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] p-6 shadow-2xl my-8">
+    <dialog ref={dialogRef} aria-labelledby="add-monitor-title" onKeyDown={containKeyboardFocus} onCancel={event => { event.preventDefault(); if (!isSubmitting) onClose() }} className="monitor-dialog">
+      <div className="relative w-full rounded-2xl border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] p-4 sm:p-6 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-[var(--pulse-border)]">
+        <div className="sticky top-0 z-10 bg-[var(--pulse-card)] flex items-center justify-between pb-4 border-b border-[var(--pulse-border)]">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
               <Plus className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-[var(--pulse-text)]">
+              <h2 id="add-monitor-title" className="text-base font-semibold text-[var(--pulse-text)]">
                 快速添加监控项目
               </h2>
               <p className="text-xs text-[var(--pulse-text-dim)]">
@@ -293,6 +307,8 @@ if (url.pathname === '/api/health') {
 
           <button
             onClick={onClose}
+            disabled={isSubmitting}
+            aria-label="关闭添加监控弹窗"
             type="button"
             className="rounded-lg p-1.5 text-[var(--pulse-text-muted)] hover:bg-white/5 hover:text-[var(--pulse-text)] transition-colors"
           >
@@ -349,13 +365,7 @@ if (url.pathname === '/api/health') {
                 <code className="text-emerald-400 font-mono">/api/health</code> 深度探针，在内部实测一次真实的读取延迟并返回 JSON。
               </p>
               <div className="relative rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-2.5 font-mono text-[11px] text-[var(--pulse-text-muted)] overflow-x-auto">
-                <pre>{`// 粘贴到你的任意 Cloudflare Worker 中暴露 KV/D1 深度探针:
-if (url.pathname === '/api/health') {
-  const t0 = performance.now();
-  await env.MY_KV.get('__probe__'); // 或 await env.DB.prepare('SELECT 1').run()
-  const latency = Math.round(performance.now() - t0);
-  return Response.json({ status: 'UP', storage_latency_ms: latency });
-}`}</pre>
+                <pre>{HEALTH_EXAMPLE}</pre>
                 <button
                   type="button"
                   onClick={handleCopyCode}
@@ -371,7 +381,7 @@ if (url.pathname === '/api/health') {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {errorMsg && (
-            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
+            <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
               {errorMsg}
             </div>
           )}
@@ -379,16 +389,17 @@ if (url.pathname === '/api/health') {
           {/* URL with Live Test Button */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-[var(--pulse-text-muted)]">
+              <label htmlFor="monitor-url" className="text-xs font-medium text-[var(--pulse-text-muted)]">
                 探活 URL 目标地址 *
               </label>
               <span className="text-[11px] text-[var(--pulse-text-dim)]">
-                支持 Workers.dev、Pages.dev 或自定义域名
+                支持公网 HTTP / HTTPS 域名
               </span>
             </div>
             <div className="relative flex items-center">
               <input
                 type="url"
+                id="monitor-url"
                 required
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
@@ -430,12 +441,14 @@ if (url.pathname === '/api/health') {
 
           {/* Service Name */}
           <div>
-            <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+            <label htmlFor="monitor-name" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
               服务名称 *
             </label>
             <input
               type="text"
               required
+              id="monitor-name"
+              maxLength={100}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如：vBlog D1 探针 或 CF Worker API"
@@ -446,7 +459,7 @@ if (url.pathname === '/api/health') {
           {/* Category / Group selection & Custom entry */}
           <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 p-3.5 space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5">
+              <label htmlFor="monitor-group" className="text-xs font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-emerald-500" />
                 所属分类分组 *
               </label>
@@ -484,6 +497,7 @@ if (url.pathname === '/api/health') {
             {groupMode === 'select' ? (
               <div className="relative">
                 <select
+                  id="monitor-group"
                   value={selectedGroup}
                   onChange={(e) => {
                     if (e.target.value === '__NEW__') {
@@ -511,6 +525,8 @@ if (url.pathname === '/api/health') {
                   type="text"
                   autoFocus
                   required
+                  id="monitor-group"
+                  maxLength={80}
                   value={customGroup}
                   onChange={(e) => setCustomGroup(e.target.value)}
                   placeholder="输入自定义分类名称 (例如: 微服务集群 / AI 代理 / 海外节点)"
@@ -566,12 +582,13 @@ if (url.pathname === '/api/health') {
           {/* Request Method & Expected Status Code */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+              <label htmlFor="monitor-method" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
                 请求方式
               </label>
               <select
+                id="monitor-method"
                 value={method}
-                onChange={(e) => setMethod(e.target.value as 'GET' | 'HEAD')}
+                onChange={(e) => { testSequence.current++; setTestState(null); setMethod(e.target.value as 'GET' | 'HEAD'); }}
                 className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] focus:border-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="GET">GET</option>
@@ -580,31 +597,36 @@ if (url.pathname === '/api/health') {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+              <label htmlFor="monitor-status" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
                 期望状态码
               </label>
               <input
                 type="number"
+                id="monitor-status"
+                min={200}
+                max={599}
                 value={expectedStatus}
-                onChange={(e) => setExpectedStatus(Number(e.target.value))}
+                onChange={(e) => { testSequence.current++; setTestState(null); setExpectedStatus(Number(e.target.value)); }}
                 className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] font-mono-numeric focus:border-emerald-500 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
-              管理密钥 (Admin Token, 可选)
+            <label htmlFor="monitor-token" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+              管理密钥（仅当前标签页保存）
             </label>
             <input
               type="password"
+              id="monitor-token"
               value={adminToken}
               onChange={(e) => setAdminToken(e.target.value)}
-              placeholder="Cloudflare 生产环境防未经授权写入（开发/单机演示可留空）"
+              placeholder="输入管理员配置的密钥，测试、添加和删除均需认证"
               className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] placeholder-[var(--pulse-text-dim)] focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
+          <button type="button" onClick={() => { setErrorMsg(saveAdminToken(adminToken) ? '管理密钥已更新，仅保存在当前标签页' : '浏览器禁止存储，无法保存密钥；当前添加和测试仍可使用') }} className="text-xs text-emerald-500">仅保存管理密钥</button>
           {/* Footer Actions */}
           <div className="mt-6 flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--pulse-border)]">
             <button
@@ -626,6 +648,6 @@ if (url.pathname === '/api/health') {
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
   )
 }

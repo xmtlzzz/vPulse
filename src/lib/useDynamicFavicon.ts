@@ -5,6 +5,7 @@ export function useDynamicFavicon(overall: OverallStatus, monitors: Monitor[]) {
   useEffect(() => {
     const isOutage = overall.status === 'outage'
     const isDegraded = overall.status === 'degraded'
+    const isUnknown = overall.status === 'unknown'
     const downCount = monitors.filter((m) => m.current_status === 0).length
 
     // 1. Dynamic Title
@@ -12,12 +13,14 @@ export function useDynamicFavicon(overall: OverallStatus, monitors: Monitor[]) {
       document.title = `🔴 (${downCount}项中断) vPulse · 边缘告警`
     } else if (isDegraded) {
       document.title = `🟡 (延迟偏高) vPulse · 边缘探活`
+    } else if (isUnknown) {
+      document.title = '⚪ vPulse · 状态未知或数据过期'
     } else {
       document.title = `🟢 vPulse · 全部服务正常运行`
     }
 
     // 2. Dynamic SVG Favicon (Green / Amber / Rose glowing dot)
-    const color = isOutage ? '#f43f5e' : isDegraded ? '#f59e0b' : '#10b981'
+    const color = isUnknown ? '#9ca3af' : isOutage ? '#f43f5e' : isDegraded ? '#f59e0b' : '#10b981'
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
       <circle cx="16" cy="16" r="14" fill="${color}"/>
       <path d="M7 16h4l2.5-6 5 12 2.5-6h4" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>

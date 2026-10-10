@@ -1,297 +1,83 @@
-import { DEFAULT_MONITORS, MonitorConfig } from './default-monitors'
-import { HeartbeatResult } from './probe'
+import type { MonitorConfig, Monitor, Heartbeat, Incident } from '../src/types'
+import { HttpError, monitorInput } from './validation'
 
-export interface MonitorWithHistory extends MonitorConfig {
-  current_status: 1 | 0 | 2
-  current_latency_ms: number
-  ssl_days_remaining: number
-  uptime_30d: number
-  avg_latency_ms: number
-  heartbeats: HeartbeatSummary[]
-}
-
-export interface HeartbeatSummary {
-  status: 1 | 0 | 2
-  latency_ms: number
-  timestamp: number
-  message?: string
-}
-
-export interface IncidentRecord {
-  id: string
-  title: string
-  description: string
-  severity: 'minor' | 'major' | 'maintenance'
-  status: 'investigating' | 'identified' | 'monitoring' | 'resolved'
-  created_at: number
-  updated_at: number
-  resolved_at?: number
-}
-
-// Generate fallback 60-slot heartbeat history for zero-cold-start presentation
-function generateMockHeartbeats(
-  monitorId: string,
-  baseLatency: number
-): HeartbeatSummary[] {
-  const heartbeats: HeartbeatSummary[] = []
-  const now = Math.floor(Date.now() / 1000)
-  const slotIntervalSec = 180 // 3 minutes per slot
-
-  for (let i = 59; i >= 0; i--) {
-    const timestamp = now - i * slotIntervalSec
-    // Add subtle jitter: baseLatency ± 15ms
-    const jitter = Math.floor(Math.sin(i * 0.4) * 12 + (i % 7))
-    const latency_ms = Math.max(12, baseLatency + jitter)
-
-    heartbeats.push({
-      status: 1, // Healthy UP
-      latency_ms,
-      timestamp,
-      message: 'OK',
-    })
-  }
-
-  return heartbeats
-}
-
-export async function fetchMonitorsWithHistory(
-  db?: D1Database
-): Promise<MonitorWithHistory[]> {
-  let monitors: MonitorConfig[] = DEFAULT_MONITORS
-
-  if (db) {
-    try {
-      const rows = await db
-        .prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY order_num ASC')
-        .all<MonitorConfig>()
-      if (rows.results && rows.results.length > 0) {
-        monitors = rows.results
-      }
-    } catch {
-      // Use DEFAULT_MONITORS if table not yet initialized
-    }
-  }
-
-  const results: MonitorWithHistory[] = []
-
-  for (const monitor of monitors) {
-    let heartbeats: HeartbeatSummary[] = []
-    let uptime_30d = 99.98
-    let avg_latency_ms = 45
-    let current_status: 1 | 0 | 2 = 1
-    let current_latency_ms = 45
-    let ssl_days_remaining = 84
-
-    if (db) {
-      try {
-        const hbRows = await db
-          .prepare(
-            `SELECT status, latency_ms, timestamp, message, ssl_days_remaining
-             FROM heartbeats
-             WHERE monitor_id = ?
-             ORDER BY timestamp DESC
-             LIMIT 60`
-          )
-          .bind(monitor.id)
-          .all<{
-            status: 1 | 0 | 2
-            latency_ms: number
-            timestamp: number
-            message?: string
-            ssl_days_remaining?: number
-          }>()
-
-        if (hbRows.results && hbRows.results.length > 0) {
-          // Reverse so oldest is left (index 0) and latest is right (index 59)
-          heartbeats = hbRows.results
-            .reverse()
-            .map((r) => ({
-              status: r.status,
-              latency_ms: r.latency_ms,
-              timestamp: r.timestamp,
-              message: r.message,
-            }))
-
-          const latest = hbRows.results[hbRows.results.length - 1]
-          current_status = latest.status
-          current_latency_ms = latest.latency_ms
-          if (latest.ssl_days_remaining) {
-            ssl_days_remaining = latest.ssl_days_remaining
-          }
-
-          const upCount = heartbeats.filter((h) => h.status === 1).length
-          uptime_30d = Math.round((upCount / heartbeats.length) * 10000) / 100
-
-          const sumLatency = heartbeats.reduce((acc, h) => acc + h.latency_ms, 0)
-          avg_latency_ms = Math.round(sumLatency / heartbeats.length)
-        }
-      } catch (err) {
-        console.warn(`[vPulse] DB query failed for monitor ${monitor.id}:`, err)
-      }
-    }
-
-    // If heartbeats are fewer than 60:
-    if (heartbeats.length < 60) {
-      const isDefault = ['vmaker', 'vblog', 'vblog-api'].includes(monitor.id)
-      const now = Math.floor(Date.now() / 1000)
-      const missingCount = 60 - heartbeats.length
-
-      if (isDefault && heartbeats.length === 0) {
-        // Cold start demo baseline for default system monitors only
-        const baseLatencies: Record<string, number> = {
-          vmaker: 42,
-          vblog: 58,
-          'vblog-api': 24,
-        }
-        heartbeats = generateMockHeartbeats(monitor.id, baseLatencies[monitor.id] || 50)
-      } else {
-        // Newly added monitors: prefix with blank unprobed slots so real probes push forward from tail!
-        const blankSlots: HeartbeatSummary[] = []
-        for (let i = missingCount; i >= 1; i--) {
-          blankSlots.push({
-            status: -1,
-            latency_ms: 0,
-            timestamp: now - (heartbeats.length + i) * 180,
-            message: '等待探活',
-          })
-        }
-        heartbeats = blankSlots.concat(heartbeats)
-      }
-
-      const realSlots = heartbeats.filter((h) => h.status !== -1)
-      if (realSlots.length > 0) {
-        current_latency_ms = realSlots[realSlots.length - 1].latency_ms
-        current_status = realSlots[realSlots.length - 1].status
-        avg_latency_ms = Math.round(
-          realSlots.reduce((acc, h) => acc + h.latency_ms, 0) / realSlots.length
-        )
-        const upCount = realSlots.filter((h) => h.status === 1).length
-        uptime_30d = Math.round((upCount / realSlots.length) * 10000) / 100
-      }
-    }
-
-    results.push({
-      ...monitor,
-      current_status,
-      current_latency_ms,
-      ssl_days_remaining,
-      uptime_30d,
-      avg_latency_ms,
-      heartbeats,
-    })
-  }
-
-  return results
-}
-
-export async function fetchIncidents(db?: D1Database): Promise<IncidentRecord[]> {
-  if (!db) return []
-  try {
-    const rows = await db
-      .prepare('SELECT * FROM incidents ORDER BY created_at DESC LIMIT 5')
-      .all<IncidentRecord>()
-    return rows.results || []
-  } catch {
-    return []
-  }
+export const MAX_MONITORS = 20
+export function requireDb(db?: D1Database): D1Database {
+  if (!db) throw new HttpError(503, '监控数据库未配置')
+  return db
 }
 
 export async function getAllMonitors(db?: D1Database): Promise<MonitorConfig[]> {
-  if (!db) return DEFAULT_MONITORS
-  try {
-    const rows = await db
-      .prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY order_num ASC, created_at ASC')
-      .all<MonitorConfig>()
-    if (rows.results && rows.results.length > 0) {
-      return rows.results
-    }
-  } catch (err) {
-    console.warn('[vPulse] DB query monitors failed, fallback to defaults:', err)
-  }
-  return DEFAULT_MONITORS
+  const rows = await requireDb(db).prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY order_num, created_at, id').all<MonitorConfig>()
+  return rows.results
 }
 
-export async function createMonitor(
-  data: {
-    id?: string
-    name: string
-    group_name: string
-    url: string
-    method?: 'GET' | 'HEAD' | 'POST'
-    expected_status?: number
-    interval_min?: number
-    timeout_ms?: number
-  },
-  db?: D1Database
-): Promise<MonitorConfig> {
-  const baseId =
-    data.id ||
-    data.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') ||
-    'mon'
-
-  let id = baseId
-  if (db) {
-    try {
-      const existing = await db
-        .prepare('SELECT id FROM monitors WHERE id = ?')
-        .bind(id)
-        .first()
-      if (existing) {
-        id = `${baseId}-${Math.random().toString(36).substring(2, 6)}`
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const monitor: MonitorConfig = {
-    id,
-    name: data.name,
-    group_name: data.group_name || '自定义服务',
-    url: data.url,
-    method: data.method || 'GET',
-    expected_status: data.expected_status || 200,
-    interval_min: data.interval_min || 3,
-    timeout_ms: data.timeout_ms || 6000,
-    order_num: 10,
-    enabled: 1,
-  }
-
-  if (db) {
-    await db
-      .prepare(
-        `INSERT OR REPLACE INTO monitors (id, name, group_name, url, method, expected_status, interval_min, timeout_ms, order_num, enabled, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        monitor.id,
-        monitor.name,
-        monitor.group_name,
-        monitor.url,
-        monitor.method,
-        monitor.expected_status,
-        monitor.interval_min,
-        monitor.timeout_ms,
-        monitor.order_num,
-        monitor.enabled,
-        Math.floor(Date.now() / 1000)
-      )
-      .run()
-  }
-
+export async function createMonitor(data: Record<string, unknown>, db?: D1Database): Promise<MonitorConfig> {
+  const input = monitorInput(data)
+  const monitor: MonitorConfig = { id: crypto.randomUUID(), ...input, order_num: 10, enabled: 1, created_at: Math.floor(Date.now() / 1000) }
+  const database = requireDb(db)
+  const result = await database.batch<{ id: string }>([database.prepare(`INSERT INTO monitors(id,name,group_name,url,method,expected_status,interval_min,timeout_ms,order_num,enabled,created_at)
+    SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM monitors) < ? RETURNING id`)
+    .bind(monitor.id, monitor.name, monitor.group_name, monitor.url, monitor.method, monitor.expected_status,
+      monitor.interval_min, monitor.timeout_ms, monitor.order_num, monitor.enabled, monitor.created_at!, MAX_MONITORS),
+    database.prepare("UPDATE status_revision SET revision=revision+1 WHERE key='status' AND EXISTS(SELECT 1 FROM monitors WHERE id=?)").bind(monitor.id),
+  ])
+  if (!result[0].results.length) throw new HttpError(409, `最多支持 ${MAX_MONITORS} 个监控项`)
   return monitor
 }
 
 export async function removeMonitor(id: string, db?: D1Database): Promise<boolean> {
-  if (db) {
-    await db.prepare('DELETE FROM monitors WHERE id = ?').bind(id).run()
-    await db.prepare('DELETE FROM heartbeats WHERE monitor_id = ?').bind(id).run()
-    return true
-  }
-  return false
+  const database = requireDb(db)
+  const now = Math.floor(Date.now() / 1000)
+  const results = await database.batch<{ id: string }>([
+    database.prepare(`UPDATE incidents SET status='resolved',resolved_at=?,updated_at=?,description=description || '（监控项已删除，停止追踪）'
+      WHERE status!='resolved' AND id IN (SELECT incident_id FROM incident_monitors WHERE monitor_id=?)`).bind(now, now, id),
+    database.prepare('DELETE FROM monitors WHERE id=? RETURNING id').bind(id),
+    database.prepare("UPDATE status_revision SET revision=revision+1 WHERE key='status'"),
+  ])
+  return results[1].results.length > 0
 }
 
+export async function fetchMonitorsWithHistory(db?: D1Database): Promise<Monitor[]> {
+  const database = requireDb(db)
+  const now = Math.floor(Date.now() / 1000)
+  const cutoff = now - 30 * 86400
+  const monitors = await getAllMonitors(database)
+  if (!monitors.length) return []
+  const histories = await database.batch<Heartbeat>(monitors.map(m => database.prepare(
+    'SELECT status,status_code,latency_ms,message,timestamp FROM heartbeats WHERE monitor_id=? ORDER BY timestamp DESC,id DESC LIMIT 60').bind(m.id)))
+  // Time-weighted observed availability; long gaps are unknown. Report coverage too.
+  const stats = await database.prepare(`WITH intervals AS (
+    SELECT h.monitor_id,h.status,h.timestamp,m.interval_min,m.timeout_ms,
+      LEAD(h.timestamp,1,?) OVER (PARTITION BY h.monitor_id ORDER BY h.timestamp,h.id) AS next_ts
+    FROM heartbeats h JOIN monitors m ON m.id=h.monitor_id WHERE m.enabled=1 AND h.timestamp>=?
+  ), durations AS (
+    SELECT monitor_id,status,MAX(0,MIN(next_ts,timestamp+interval_min*60+MAX(60,timeout_ms*2/1000),?)-MAX(timestamp,?)) AS seconds FROM intervals
+  ) SELECT monitor_id,SUM(seconds) AS covered,SUM(CASE WHEN status IN (1,2) THEN seconds ELSE 0 END) AS available
+    FROM durations GROUP BY monitor_id`).bind(now, cutoff - 7200, now, cutoff).all<{ monitor_id: string; covered: number; available: number }>()
+  const byId = new Map(stats.results.map(s => [s.monitor_id, s]))
+  return monitors.map((m, index) => {
+    const heartbeats = histories[index].results.reverse()
+    const latest = heartbeats.at(-1)
+    const next = latest ? latest.timestamp + m.interval_min * 60 : null
+    const stale = !latest || now > next! + Math.max(60, Math.ceil(m.timeout_ms * 2 / 1000))
+    const observed = heartbeats.filter(h => h.latency_ms !== null && h.status !== 0)
+    const stat = byId.get(m.id)
+    const window = Math.max(1, now - Math.max(cutoff, m.created_at ?? cutoff))
+    return { ...m, heartbeats, stale, current_status: stale ? -1 : latest!.status,
+      current_latency_ms: stale ? null : latest!.latency_ms,
+      avg_latency_ms: observed.length ? Math.round(observed.reduce((s,h) => s + h.latency_ms!, 0) / observed.length) : null,
+      uptime_30d: stat?.covered ? Math.round(stat.available / stat.covered * 10000) / 100 : null,
+      coverage_30d: stat?.covered ? Math.min(100, Math.round(stat.covered / window * 10000) / 100) : 0,
+      last_checked_at: latest?.timestamp ?? null, next_check_at: next }
+  })
+}
+
+export { overallStatus } from '../src/lib/status'
+
+export async function fetchIncidents(db?: D1Database): Promise<Incident[]> {
+  const rows = await requireDb(db).prepare(`SELECT i.*,im.monitor_id FROM incidents i LEFT JOIN incident_monitors im ON im.incident_id=i.id
+    WHERE i.status!='resolved' OR i.id IN (SELECT id FROM incidents WHERE status='resolved' ORDER BY resolved_at DESC LIMIT 5)
+    ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END, i.created_at DESC`).all<Incident>()
+  return rows.results
+}

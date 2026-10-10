@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { Heartbeat } from '../types'
-import { formatDateTime, formatRelativeTime } from '../lib/format'
+import { formatDateTime, formatRelativeTime, formatLatency, formatUptimePercent } from '../lib/format'
 
 interface HeartbeatBarProps {
   heartbeats: Heartbeat[]
-  uptimePercent: number
+  uptimePercent: number | null
   isRefreshing?: boolean
 }
 
@@ -20,27 +20,28 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
   } | null>(null)
 
   // Ensure we have up to 60 slots
-  const slots = heartbeats.slice(-60)
+  const realSlots = heartbeats.slice(-60)
+  const slots: Heartbeat[] = [...Array.from({ length: 60 - realSlots.length }, () => ({ status: -1 as const, latency_ms: null, status_code: null, timestamp: 0, message: '等待探测' })), ...realSlots]
 
   return (
     <div className="relative w-full">
       {/* Tooltip on hover */}
       {hoveredBeat && (
         <div
-          className="pointer-events-none absolute -top-12 z-30 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] px-2.5 py-1 text-xs shadow-xl backdrop-blur-md"
-          style={{ left: `${Math.max(8, Math.min(92, hoveredBeat.x))}%` }}
+          className="pointer-events-none absolute top-full mt-2 z-30 -translate-x-1/2 w-56 max-w-full rounded-lg border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] px-2.5 py-1 text-xs shadow-xl"
+          style={{ left: `clamp(min(7rem, 50%), ${hoveredBeat.x}%, max(calc(100% - 7rem), 50%))` }}
         >
           {hoveredBeat.beat.status === -1 ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-block h-2 w-2 rounded-full bg-[var(--pulse-text-dim)]" />
               <span className="text-[var(--pulse-text-dim)]">等待探活队列</span>
               <span className="text-[var(--pulse-text-dim)]">·</span>
               <span className="text-[var(--pulse-text-muted)]">
-                {formatDateTime(hoveredBeat.beat.timestamp)}
+                尚无记录
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-block h-2 w-2 rounded-full ${
                   hoveredBeat.beat.status === 1
@@ -51,7 +52,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
                 }`}
               />
               <span className="font-mono-numeric font-medium text-[var(--pulse-text)]">
-                {hoveredBeat.beat.latency_ms} ms
+                {formatLatency(hoveredBeat.beat.latency_ms)}
               </span>
               <span className="text-[var(--pulse-text-dim)]">·</span>
               <span className="text-[var(--pulse-text-muted)]">
@@ -62,6 +63,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
               </span>
             </div>
           )}
+          <p className="mt-1 break-words text-[var(--pulse-text-muted)]">{hoveredBeat.beat.status_code !== null ? `HTTP ${hoveredBeat.beat.status_code} · ` : ''}{hoveredBeat.beat.message}</p>
         </div>
       )}
 
@@ -96,6 +98,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
                     ? { animationDelay: `${(idx % 15) * 60}ms` }
                     : undefined
                 }
+                onPointerDown={(e) => { if (e.pointerType !== 'mouse') setHoveredBeat({ beat, x: (idx + 0.5) / slots.length * 100, index: idx }) }}
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.parentElement?.getBoundingClientRect()
                   const beatRect = e.currentTarget.getBoundingClientRect()
@@ -106,6 +109,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
                     setHoveredBeat({ beat, x: relativeX, index: idx })
                   }
                 }}
+                title={isBlank ? '等待探测' : `${formatDateTime(beat.timestamp)} · ${beat.status_code === null ? '无 HTTP 响应' : `HTTP ${beat.status_code}`} · ${beat.message || ''}`}
                 className={`heartbeat-capsule flex-1 h-6 cursor-pointer rounded-xs ${barColor} ${
                   isRefreshing ? 'capsule-refreshing' : isLatest && !isBlank ? 'latest-slot-ping' : ''
                 }`}
@@ -117,13 +121,13 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
 
       {/* Labels below strip */}
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--pulse-text-dim)]">
-        <span>60 次探活前 (约 3 小时)</span>
+        <span>{realSlots.length ? formatRelativeTime(realSlots[0].timestamp) : '等待首次探测'}</span>
         <span className="font-mono-numeric font-medium text-emerald-500">
           {slots.some((s) => s.status === -1)
-            ? `从尾部累积中 · ${uptimePercent.toFixed(1)}% 可用率`
-            : `${uptimePercent.toFixed(2)}% 可用率`}
+             ? `${realSlots.length} 次真实记录`
+             : `${formatUptimePercent(uptimePercent)} 观测可用率`}
         </span>
-        <span>刚刚 (当前状态)</span>
+        <span>{realSlots.length ? formatRelativeTime(realSlots.at(-1)!.timestamp) : '暂无记录'}</span>
       </div>
     </div>
   )

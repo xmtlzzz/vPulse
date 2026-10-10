@@ -14,14 +14,17 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
 }) => {
   const isAllUp = overall.status === 'operational'
   const isDegraded = overall.status === 'degraded'
+  const isUnknown = overall.status === 'unknown'
 
-  const statusConfig = isAllUp
+  const statusConfig = isUnknown
+    ? { bgColor: 'bg-slate-500/10', borderColor: 'border-slate-500/30', textColor: 'text-slate-400', title: '监控状态未知', subtitle: '等待真实探测数据，或现有记录已过期', icon: Clock }
+    : isAllUp
     ? {
         bgColor: 'bg-emerald-500/10',
         borderColor: 'border-emerald-500/30',
         textColor: 'text-emerald-500',
         title: '全部服务正常运行',
-        subtitle: 'All Systems Operational · 全球边缘节点联通无阻',
+        subtitle: 'All Systems Operational · 当前监控项探测正常',
         icon: CheckCircle2,
       }
     : isDegraded
@@ -29,8 +32,8 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
           bgColor: 'bg-amber-500/10',
           borderColor: 'border-amber-500/30',
           textColor: 'text-amber-500',
-          title: '部分服务响应延迟偏高',
-          subtitle: 'Partial Degradation · 正在持续自动重试中',
+          title: '部分服务降级',
+          subtitle: 'Partial Degradation · 按配置间隔持续巡检',
           icon: AlertTriangle,
         }
       : {
@@ -38,7 +41,7 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
           borderColor: 'border-rose-500/30',
           textColor: 'text-rose-500',
           title: '检测到服务异常中断',
-          subtitle: 'Service Outage · 存在无法连通的端点',
+          subtitle: 'Service Outage · 存在探测失败的端点',
           icon: XCircle,
         }
 
@@ -69,7 +72,7 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
         <div className="flex items-center gap-1.5 self-start sm:self-center text-xs text-[var(--pulse-text-dim)]">
           <Clock className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
           <span className={isRefreshing ? 'font-medium text-emerald-500 animate-pulse' : ''}>
-            {isRefreshing ? '正在全网探活巡检中...' : `上次巡检: ${formatRelativeTime(overall.updated_at)}`}
+            {isRefreshing ? '正在巡检全部监控...' : `最早检查记录: ${formatRelativeTime(overall.updated_at)}`}
           </span>
         </div>
       </div>
@@ -78,7 +81,7 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
       <div className="mt-6 pt-5 border-t border-[var(--pulse-border)] grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
           <span className="text-xs font-medium text-[var(--pulse-text-dim)] uppercase tracking-wider">
-            30 天综合可用率
+            30 天观测可用率
           </span>
           <p className="mt-1 font-mono-numeric text-xl sm:text-2xl font-semibold text-emerald-500">
             {formatUptimePercent(overall.uptime_30d)}
@@ -109,7 +112,7 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
             探活频次
           </span>
           <p className="mt-1 font-mono-numeric text-xl sm:text-2xl font-semibold text-[var(--pulse-text)]">
-            每 3 分钟
+            服务端定时巡检
           </p>
         </div>
       </div>

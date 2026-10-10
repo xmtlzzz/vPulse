@@ -1,291 +1,53 @@
-import { StatusResponse, Monitor, Heartbeat } from '../types'
+import type { StatusResponse, ProbeResponse } from '../types'
+import { getAdminToken } from './storage'
 
-function generateFallbackHeartbeats(baseLatency: number): Heartbeat[] {
-  const heartbeats: Heartbeat[] = []
-  const now = Math.floor(Date.now() / 1000)
-  for (let i = 59; i >= 0; i--) {
-    const timestamp = now - i * 180
-    const jitter = Math.floor(Math.sin(i * 0.5) * 10 + (i % 5))
-    heartbeats.push({
-      status: 1,
-      latency_ms: Math.max(15, baseLatency + jitter),
-      timestamp,
-      message: 'OK',
-    })
+export const EMPTY_STATUS: StatusResponse = {
+  success: false,
+  overall: { status: 'unknown', uptime_30d: null, avg_latency_ms: null, monitors_count: 0, healthy_count: 0, updated_at: null, next_check_at: null },
+  monitors: [], incidents: [],
+}
+
+async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  const headers = new Headers(options.headers)
+  headers.set('Accept', 'application/json')
+  if (options.method && options.method !== 'GET') {
+    const secret = (token ?? getAdminToken()).trim()
+    if (secret) headers.set('Authorization', `Bearer ${secret}`)
   }
-  return heartbeats
+  const response = await fetch(path, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(240000) })
+  const data: unknown = await response.json().catch(() => null)
+  if (!response.ok || !data || typeof data !== 'object' || !('success' in data) || data.success !== true) {
+    const error = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : `请求失败（HTTP ${response.status}）`
+    throw new Error(error)
+  }
+  return data as T
 }
 
-export const FALLBACK_STATUS: StatusResponse = {
-  success: true,
-  overall: {
-    status: 'operational',
-    uptime_30d: 99.99,
-    avg_latency_ms: 48,
-    monitors_count: 3,
-    healthy_count: 3,
-    updated_at: Math.floor(Date.now() / 1000),
-  },
-  monitors: [
-    {
-      id: 'vmaker',
-      name: 'vMaker 创意作品集',
-      group_name: '核心站点 (Portals)',
-      url: 'https://vmaker.xmtlz.dev',
-      method: 'GET',
-      expected_status: 200,
-      interval_min: 3,
-      timeout_ms: 6000,
-      order_num: 1,
-      enabled: 1,
-      current_status: 1,
-      current_latency_ms: 42,
-      ssl_days_remaining: 85,
-      uptime_30d: 100.0,
-      avg_latency_ms: 38,
-      heartbeats: generateFallbackHeartbeats(38),
-    },
-    {
-      id: 'vblog',
-      name: 'vBlog 个人独立博客',
-      group_name: '核心站点 (Portals)',
-      url: 'https://vblog.xmtlz.dev',
-      method: 'GET',
-      expected_status: 200,
-      interval_min: 3,
-      timeout_ms: 6000,
-      order_num: 2,
-      enabled: 1,
-      current_status: 1,
-      current_latency_ms: 56,
-      ssl_days_remaining: 82,
-      uptime_30d: 99.98,
-      avg_latency_ms: 54,
-      heartbeats: generateFallbackHeartbeats(54),
-    },
-    {
-      id: 'vblog-api',
-      name: 'vBlog D1 边缘健康探针',
-      group_name: '边缘服务与存储 (Edge & Storage)',
-      url: 'https://vblog.xmtlz.dev/api/health',
-      method: 'GET',
-      expected_status: 200,
-      interval_min: 3,
-      timeout_ms: 5000,
-      order_num: 3,
-      enabled: 1,
-      current_status: 1,
-      current_latency_ms: 22,
-      ssl_days_remaining: 82,
-      uptime_30d: 100.0,
-      avg_latency_ms: 20,
-      heartbeats: generateFallbackHeartbeats(20),
-    },
-  ],
-  incidents: [],
+export async function fetchStatus(signal?: AbortSignal): Promise<StatusResponse> {
+  const data = await apiRequest<StatusResponse>('/api/status', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) })
+  if (!data.overall || !Array.isArray(data.monitors) || !Array.isArray(data.incidents)) throw new Error('状态接口返回的数据格式无效')
+  return data
 }
 
-const LOCAL_CUSTOM_KEY = 'vpulse-custom-monitors'
+export function triggerProbe(): Promise<ProbeResponse> { return apiRequest('/api/probe', { method: 'POST' }) }
+export function probeSingleMonitorById(id: string): Promise<ProbeResponse> { return apiRequest(`/api/probe?id=${encodeURIComponent(id)}`, { method: 'POST' }) }
 
-function getLocalCustomMonitors(): Monitor[] {
-  if (typeof window === 'undefined') return []
+export async function testConnectionProbe(url: string, method = 'GET', expected_status = 200, token?: string): Promise<{ success: boolean; statusCode?: number; latencyMs?: number; error?: string }> {
   try {
-    const raw = localStorage.getItem(LOCAL_CUSTOM_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
+    return await apiRequest('/api/probe-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, method, expected_status }) }, token)
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : '连接测试失败' } }
 }
 
-function saveLocalCustomMonitors(list: Monitor[]) {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(LOCAL_CUSTOM_KEY, JSON.stringify(list))
-}
-
-export async function fetchStatus(): Promise<StatusResponse> {
-  const custom = getLocalCustomMonitors()
+type OperationResult = { success: boolean; error?: string }
+export async function createNewMonitor(data: { name: string; url: string; group_name: string; method?: string; expected_status?: number; interval_min?: number; timeout_ms?: number }, token?: string): Promise<OperationResult> {
   try {
-    const res = await fetch('/api/status', {
-      headers: { Accept: 'application/json' },
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = (await res.json()) as StatusResponse
-    if (data && data.success) {
-      return data
-    }
-  } catch (err) {
-    console.warn('[vPulse] Using fallback status due to network error:', err)
-  }
-
-  // Merge custom monitors into fallback
-  const mergedMonitors = [...FALLBACK_STATUS.monitors]
-  for (const c of custom) {
-    if (!mergedMonitors.some((m) => m.id === c.id)) {
-      mergedMonitors.push(c)
-    }
-  }
-
-  return {
-    ...FALLBACK_STATUS,
-    monitors: mergedMonitors,
-    overall: {
-      ...FALLBACK_STATUS.overall,
-      monitors_count: mergedMonitors.length,
-      healthy_count: mergedMonitors.filter((m) => m.current_status === 1).length,
-    },
-  }
-}
-
-export async function triggerProbe(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/probe', { method: 'POST' })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-export async function probeSingleMonitorById(id: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/probe?id=${encodeURIComponent(id)}`, { method: 'POST' })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-export async function testConnectionProbe(
-  url: string,
-  method = 'GET'
-): Promise<{ success: boolean; statusCode?: number; latencyMs?: number; error?: string }> {
-  try {
-    const res = await fetch('/api/probe-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, method }),
-    })
-    if (res.ok) {
-      return await res.json()
-    }
-  } catch {
-    // fallback
-  }
-
-  // Client-side fallback test if backend is unavailable
-  const startTime = performance.now()
-  try {
-    const r = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
-    const latency = Math.round(performance.now() - startTime)
-    return { success: true, statusCode: 200, latencyMs: latency }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '无法连接'
-    return { success: false, error: msg }
-  }
-}
-
-export async function createNewMonitor(
-  data: {
-    name: string
-    url: string
-    group_name: string
-    method?: string
-    expected_status?: number
-  },
-  token?: string
-): Promise<{ success: boolean; error?: string }> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  try {
-    const res = await fetch('/api/monitors', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data),
-    })
-    if (res.ok) {
-      return { success: true }
-    }
-    const errData = (await res.json().catch(() => ({}))) as { error?: string }
-    if (res.status === 401) {
-      return { success: false, error: '需要管理员密钥 (Admin Token)' }
-    }
-    if (res.status === 404) {
-      throw new Error('Fallback to localStorage on 404')
-    }
-    return { success: false, error: errData.error || '创建失败' }
-  } catch {
-    // Local / Dev Fallback: Create mock monitor in localStorage
-    const id = `custom-${Date.now()}`
-    const now = Math.floor(Date.now() / 1000)
-    const initialHeartbeats: Heartbeat[] = []
-    for (let i = 59; i >= 1; i--) {
-      initialHeartbeats.push({
-        status: -1,
-        latency_ms: 0,
-        timestamp: now - i * 180,
-        message: '等待探活',
-      })
-    }
-    initialHeartbeats.push({
-      status: 1,
-      latency_ms: 36,
-      timestamp: now,
-      message: '首轮接入探测成功',
-    })
-
-    const newMon: Monitor = {
-      id,
-      name: data.name,
-      group_name: data.group_name || '自定义服务',
-      url: data.url,
-      method: data.method || 'GET',
-      expected_status: data.expected_status || 200,
-      interval_min: 3,
-      timeout_ms: 6000,
-      order_num: 99,
-      enabled: 1,
-      current_status: 1,
-      current_latency_ms: 36,
-      ssl_days_remaining: 80,
-      uptime_30d: 100.0,
-      avg_latency_ms: 36,
-      heartbeats: initialHeartbeats,
-    }
-
-    const current = getLocalCustomMonitors()
-    current.push(newMon)
-    saveLocalCustomMonitors(current)
+    await apiRequest('/api/monitors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, token)
     return { success: true }
-  }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : '创建失败' } }
 }
-
-export async function deleteMonitorById(
-  id: string,
-  token?: string
-): Promise<{ success: boolean; error?: string }> {
-  const headers: Record<string, string> = {}
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
+export async function deleteMonitorById(id: string, token?: string): Promise<OperationResult> {
   try {
-    const res = await fetch(`/api/monitors?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (res.ok) return { success: true }
-    if (res.status === 401) return { success: false, error: '权限不足' }
-  } catch {
-    // fallback
-  }
-
-  const current = getLocalCustomMonitors()
-  const filtered = current.filter((m) => m.id !== id)
-  saveLocalCustomMonitors(filtered)
-  return { success: true }
+    await apiRequest(`/api/monitors?id=${encodeURIComponent(id)}`, { method: 'DELETE' }, token)
+    return { success: true }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : '删除失败' } }
 }
-

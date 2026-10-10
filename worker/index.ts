@@ -1,366 +1,102 @@
-import { DEFAULT_MONITORS } from './default-monitors'
-import { executeAllProbes, probeSingleMonitor } from './probe'
-import {
-  fetchMonitorsWithHistory,
-  fetchIncidents,
-  getAllMonitors,
-  createMonitor,
-  removeMonitor,
-} from './db'
+import type { Env } from './env'
+import { createMonitor, removeMonitor, requireDb } from './db'
+import { readStatus } from './status'
+import { HttpError, monitorInput, readJson } from './validation'
+import { rateLimit, runProbes, storeProbe, withSchedulerLock } from './scheduler'
+import { probeSingleMonitor } from './probe'
+import { flushAlerts } from './alerts'
 
-export interface Env {
-  DB?: D1Database
-  ASSETS?: Fetcher
-  SITE_URL?: string
-  APP_NAME?: string
-  ADMIN_TOKEN?: string
-  WEBHOOK_URL?: string
+function json(data: unknown, status = 200) {
+  return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
 }
 
-async function dispatchWebhookAlert(
-  env: Env,
-  alert: { monitor: string; url: string; status: 'DOWN' | 'UP' | 'DEGRADED'; message: string }
-) {
-  if (!env.WEBHOOK_URL) return
-  try {
-    const isDown = alert.status === 'DOWN'
-    await fetch(env.WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        msgtype: 'markdown',
-        text: `${isDown ? '🚨' : '✅'} 【vPulse 状态变动告警】\n项目: ${alert.monitor}\n状态: ${alert.status}\n地址: ${alert.url}\n说明: ${alert.message}`,
-        content: `${isDown ? '🚨' : '✅'} **vPulse 监控状态变动**\n- **项目**: ${alert.monitor}\n- **状态**: **${alert.status}**\n- **地址**: ${alert.url}\n- **说明**: ${alert.message}`,
-        ...alert,
-      }),
-    })
-  } catch (e) {
-    console.warn('[vPulse] Webhook notification failed:', e)
+async function authorize(request: Request, env: Env) {
+  if (!env.ADMIN_TOKEN) throw new HttpError(503, '管理员尚未配置 ADMIN_TOKEN，管理操作已关闭')
+  const match = /^Bearer (\S+)$/i.exec(request.headers.get('Authorization') ?? '')
+  if (!match || match[1].length > 1024) throw new HttpError(401, '需要有效的管理员密钥')
+  // Standard Web Crypto HMAC verification provides constant-time comparison.
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(match[1]))
+  if (!await crypto.subtle.verify('HMAC', key, signature, encoder.encode(env.ADMIN_TOKEN))) throw new HttpError(401, '管理员密钥无效')
+}
+
+async function handle(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url)
+  if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
+  const origin = request.headers.get('Origin')
+  if (origin && origin !== url.origin && (request.method !== 'GET' || url.searchParams.has('probe'))) throw new HttpError(403, '不允许跨站管理请求')
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { Allow: 'GET, POST, DELETE, OPTIONS' } })
+  const isManagement = request.method !== 'GET' || url.searchParams.has('probe')
+  if (isManagement) await authorize(request, env)
+  const db = requireDb(env.DB)
+
+  if (url.pathname === '/api/status' && request.method === 'GET') {
+    if (url.searchParams.get('probe') === '1') {
+      await rateLimit(db, 'manual', 20)
+      await runProbes(env, { force: true })
+    }
+    return json(await readStatus(db))
   }
-}
-
-function jsonResponse(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-    },
-  })
-}
-
-function verifyAuth(request: Request, env: Env): boolean {
-  // If ADMIN_TOKEN is not configured on Cloudflare, allow in dev/demo mode
-  if (!env.ADMIN_TOKEN) return true
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader) return false
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-  return token === env.ADMIN_TOKEN
+  if (url.pathname === '/api/probe' && request.method === 'POST') {
+    await rateLimit(db, 'manual', 20)
+    return json(await runProbes(env, { id: url.searchParams.get('id') ?? undefined, force: url.searchParams.get('force') === '1' }))
+  }
+  if (url.pathname === '/api/probe-test' && request.method === 'POST') {
+    const body = await readJson(request)
+    const input = monitorInput({ ...body, name: '连接测试', group_name: '测试' })
+    await rateLimit(db, 'preview', 6)
+    const result = await probeSingleMonitor({ id: 'preview', ...input, enabled: 1, order_num: 0 })
+    return json({ success: result.status !== 0, statusCode: result.status_code, latencyMs: result.latency_ms, error: result.status === 0 ? result.message : undefined })
+  }
+  if (url.pathname === '/api/monitors' && request.method === 'POST') {
+    const input = monitorInput(await readJson(request))
+    await rateLimit(db, 'management', 20)
+    const result = await withSchedulerLock(db, async () => {
+      const monitor = await createMonitor(input, db)
+      await storeProbe(env, monitor, await probeSingleMonitor(monitor))
+      await flushAlerts(env)
+      return monitor
+    })
+    if (!result) throw new HttpError(409, '已有巡检正在执行，请稍后再试')
+    return json({ success: true, monitor: result }, 201)
+  }
+  if (url.pathname === '/api/monitors' && request.method === 'DELETE') {
+    await rateLimit(db, 'management', 20)
+    const id = url.searchParams.get('id')
+    if (!id || id.length > 100) throw new HttpError(400, '缺少有效监控 ID')
+    const result = await withSchedulerLock(db, () => removeMonitor(id, db))
+    if (result === null) throw new HttpError(409, '已有巡检正在执行，请稍后再试')
+    if (!result) throw new HttpError(404, '监控项不存在')
+    return json({ success: true, deleted_id: id })
+  }
+  if (url.pathname === '/api/monitors' && request.method === 'GET') return json({ success: true, monitors: (await readStatus(db)).monitors })
+  if (url.pathname === '/api/health' && request.method === 'GET') {
+    await db.prepare('SELECT 1').first()
+    const rows = await db.prepare(`SELECT m.id,m.interval_min,m.timeout_ms,MAX(h.timestamp) AS last_checked
+      FROM monitors m LEFT JOIN heartbeats h ON h.monitor_id=m.id WHERE m.enabled=1 GROUP BY m.id`)
+      .all<{ id: string; interval_min: number; timeout_ms: number; last_checked: number | null }>()
+    const now = Math.floor(Date.now() / 1000)
+    const stale = rows.results.filter(m => !m.last_checked || now > m.last_checked + m.interval_min * 60 + Math.max(60, m.timeout_ms * 2 / 1000))
+    return json({ status: stale.length ? 'DEGRADED' : 'UP', service: 'vPulse', components: { d1: { status: 'UP' }, scheduler: { status: stale.length ? 'DEGRADED' : 'UP', stale_count: stale.length } }, timestamp: now }, stale.length ? 503 : 200)
+  }
+  const known = ['/api/status', '/api/monitors', '/api/probe', '/api/probe-test', '/api/health']
+  throw new HttpError(known.includes(url.pathname) ? 405 : 404, known.includes(url.pathname) ? '请求方式不支持' : '接口不存在')
 }
 
 export default {
-  // ── Scheduled Cron Trigger (Runs probe automatically) ──────────────────────
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const monitors = await getAllMonitors(env.DB)
-    const probePromise = executeAllProbes(monitors, env.DB).then(async (results) => {
-      if (env.WEBHOOK_URL) {
-        for (const r of results) {
-          if (r.status === 0) {
-            const m = monitors.find((item) => item.id === r.monitor_id)
-            if (m) {
-              await dispatchWebhookAlert(env, {
-                monitor: m.name,
-                url: m.url,
-                status: 'DOWN',
-                message: r.message,
-              })
-            }
-          }
-        }
-      }
-    })
-    ctx.waitUntil(probePromise)
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try { return await handle(request, env) }
+    catch (error) {
+      const status = error instanceof HttpError ? error.status : 503
+      if (!(error instanceof HttpError)) console.error(JSON.stringify({ event: 'api_failure', path: new URL(request.url).pathname, error: error instanceof Error ? error.message : 'unknown' }))
+      return json({ success: false, status: 'UNKNOWN', error: error instanceof HttpError ? error.message : '监控系统暂时不可用，请稍后重试' }, status)
+    }
   },
-
-  // ── HTTP Fetch Handler ─────────────────────────────────────────────────────
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url)
-
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        },
-      })
-    }
-
-    // ── API: /api/status ────────────────────────────────────────────────────
-    if (url.pathname === '/api/status' && request.method === 'GET') {
-      const monitors = await fetchMonitorsWithHistory(env.DB)
-      const incidents = await fetchIncidents(env.DB)
-
-      const downMonitors = monitors.filter((m) => m.current_status === 0)
-      const degradedMonitors = monitors.filter((m) => m.current_status === 2)
-
-      let overallStatus: 'operational' | 'degraded' | 'outage' = 'operational'
-      if (downMonitors.length > 0) {
-        overallStatus = 'outage'
-      } else if (degradedMonitors.length > 0) {
-        overallStatus = 'degraded'
-      }
-
-      const totalUptime = monitors.reduce((acc, m) => acc + m.uptime_30d, 0)
-      const avgUptime30d =
-        monitors.length > 0
-          ? Math.round((totalUptime / monitors.length) * 100) / 100
-          : 100
-
-      const totalLatency = monitors.reduce((acc, m) => acc + m.current_latency_ms, 0)
-      const avgLatency =
-        monitors.length > 0 ? Math.round(totalLatency / monitors.length) : 0
-
-      // Edge Lazy Auto-Probe: If newest heartbeat is older than 180s or if requested
-      const now = Math.floor(Date.now() / 1000)
-      let newestTimestamp = 0
-      for (const m of monitors) {
-        for (const hb of m.heartbeats) {
-          if (hb.status !== -1 && hb.timestamp > newestTimestamp) {
-            newestTimestamp = hb.timestamp
-          }
-        }
-      }
-      const isStale = newestTimestamp === 0 || now - newestTimestamp >= 180
-      const forceProbe = url.searchParams.get('probe') === '1'
-
-      if ((isStale || forceProbe) && env.DB) {
-        const probeTask = getAllMonitors(env.DB).then((monConfigs) =>
-          executeAllProbes(monConfigs, env.DB)
-        )
-        ctx.waitUntil(probeTask)
-      }
-
-      return jsonResponse({
-        success: true,
-        overall: {
-          status: overallStatus,
-          uptime_30d: avgUptime30d,
-          avg_latency_ms: avgLatency,
-          monitors_count: monitors.length,
-          healthy_count: monitors.filter((m) => m.current_status === 1).length,
-          updated_at: newestTimestamp || now,
-        },
-        monitors,
-        incidents,
-      })
-    }
-
-    // ── API: /api/monitors (Dynamic Monitor Management) ──────────────────────
-    if (url.pathname === '/api/monitors') {
-      if (request.method === 'GET') {
-        const monitors = await getAllMonitors(env.DB)
-        return jsonResponse({ success: true, monitors })
-      }
-
-      if (request.method === 'POST') {
-        if (!verifyAuth(request, env)) {
-          return jsonResponse({ error: 'Unauthorized: Invalid Admin Token' }, 401)
-        }
-        try {
-          const body = (await request.json()) as {
-            name: string
-            url: string
-            group_name?: string
-            method?: 'GET' | 'HEAD' | 'POST'
-            expected_status?: number
-          }
-          if (!body.name || !body.url) {
-            return jsonResponse({ error: 'Name and URL are required' }, 400)
-          }
-
-          const newMonitor = await createMonitor(
-            { ...body, group_name: body.group_name || '自定义服务' },
-            env.DB
-          )
-          // Run immediate initial probe
-          const initialProbe = await probeSingleMonitor(newMonitor)
-          if (env.DB) {
-            await env.DB.prepare(
-              `INSERT INTO heartbeats (monitor_id, status, status_code, latency_ms, ssl_days_remaining, message, timestamp)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`
-            )
-              .bind(
-                initialProbe.monitor_id,
-                initialProbe.status,
-                initialProbe.status_code,
-                initialProbe.latency_ms,
-                initialProbe.ssl_days_remaining,
-                initialProbe.message,
-                initialProbe.timestamp
-              )
-              .run()
-          }
-
-          return jsonResponse({ success: true, monitor: newMonitor }, 201)
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Invalid request'
-          return jsonResponse({ error: msg }, 400)
-        }
-      }
-
-      if (request.method === 'DELETE') {
-        if (!verifyAuth(request, env)) {
-          return jsonResponse({ error: 'Unauthorized: Invalid Admin Token' }, 401)
-        }
-        const id = url.searchParams.get('id')
-        if (!id) return jsonResponse({ error: 'Missing monitor id' }, 400)
-        await removeMonitor(id, env.DB)
-        return jsonResponse({ success: true, deleted_id: id })
-      }
-    }
-
-    // ── API: /api/probe (Manual Immediate Probe Trigger with Debounce Lock) ─
-    if (url.pathname === '/api/probe' && request.method === 'POST') {
-      const force = url.searchParams.get('force') === '1'
-      const now = Math.floor(Date.now() / 1000)
-      const targetId = url.searchParams.get('id')
-
-      if (targetId) {
-        const monitors = await getAllMonitors(env.DB)
-        const target = monitors.find((m) => m.id === targetId)
-        if (!target) return jsonResponse({ error: 'Monitor not found' }, 404)
-
-        // Single monitor 30s debounce lock
-        if (!force && env.DB) {
-          try {
-            const latestHb = await env.DB.prepare(
-              `SELECT timestamp, status, latency_ms, message 
-               FROM heartbeats 
-               WHERE monitor_id = ? 
-               ORDER BY timestamp DESC LIMIT 1`
-            )
-              .bind(targetId)
-              .first<{ timestamp: number; status: number; latency_ms: number; message: string }>()
-
-            if (latestHb && now - latestHb.timestamp < 30) {
-              const remaining = 30 - (now - latestHb.timestamp)
-              return jsonResponse({
-                success: true,
-                debounced: true,
-                cooldown_remaining_sec: remaining,
-                message: `该监控项处于防抖保护期（剩余 ${remaining} 秒），已复用当前探活结果`,
-                result: {
-                  monitor_id: targetId,
-                  status: latestHb.status,
-                  latency_ms: latestHb.latency_ms,
-                  timestamp: latestHb.timestamp,
-                  message: latestHb.message,
-                },
-              })
-            }
-          } catch {
-            // ignore
-          }
-        }
-
-        const probeResult = await probeSingleMonitor(target)
-        if (env.DB) {
-          await env.DB.prepare(
-            `INSERT INTO heartbeats (monitor_id, status, status_code, latency_ms, ssl_days_remaining, message, timestamp)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
-          )
-            .bind(
-              probeResult.monitor_id,
-              probeResult.status,
-              probeResult.status_code,
-              probeResult.latency_ms,
-              probeResult.ssl_days_remaining,
-              probeResult.message,
-              probeResult.timestamp
-            )
-            .run()
-        }
-        return jsonResponse({ success: true, debounced: false, result: probeResult })
-      }
-
-      // Fleet-wide 90s debounce lock to prevent concurrent multi-tab hammering
-      const FLEET_DEBOUNCE_COOLDOWN_SEC = 90
-      if (!force && env.DB) {
-        try {
-          const latestRow = await env.DB.prepare(
-            'SELECT MAX(timestamp) as last_ts FROM heartbeats'
-          ).first<{ last_ts: number | null }>()
-
-          if (latestRow?.last_ts && now - latestRow.last_ts < FLEET_DEBOUNCE_COOLDOWN_SEC) {
-            const remaining = FLEET_DEBOUNCE_COOLDOWN_SEC - (now - latestRow.last_ts)
-            return jsonResponse({
-              success: true,
-              debounced: true,
-              cooldown_remaining_sec: remaining,
-              message: `系统处于防抖冷却保护期（剩余 ${remaining} 秒），已复用最新全网心跳`,
-            })
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      const monitors = await getAllMonitors(env.DB)
-      const probeResults = await executeAllProbes(monitors, env.DB)
-      return jsonResponse({
-        success: true,
-        debounced: false,
-        probed_count: probeResults.length,
-        results: probeResults,
-      })
-    }
-
-    // ── API: /api/probe-test (Live Connection Test Preview) ──────────────────
-    if (url.pathname === '/api/probe-test' && request.method === 'POST') {
-      try {
-        const body = (await request.json()) as { url?: string; method?: string }
-        if (!body.url) return jsonResponse({ error: 'URL is required' }, 400)
-        const startTime = performance.now()
-        const resp = await fetch(body.url, {
-          method: body.method || 'GET',
-          headers: { 'User-Agent': 'vPulse-HealthCheck/1.0' },
-          signal: AbortSignal.timeout(6000),
-        })
-        const latency = Math.round(performance.now() - startTime)
-        return jsonResponse({
-          success: true,
-          statusCode: resp.status,
-          latencyMs: latency,
-          statusText: resp.statusText,
-        })
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : '连接超时或网络错误'
-        return jsonResponse({ success: false, error: msg })
-      }
-    }
-
-    // ── API: /api/health (Self Health Check) ─────────────────────────────────
-    if (url.pathname === '/api/health') {
-      return jsonResponse({
-        status: 'UP',
-        service: 'vPulse Edge Worker',
-        timestamp: Math.floor(Date.now() / 1000),
-      })
-    }
-
-    // ── Fallback to Cloudflare Static Assets (SPA) ──────────────────────────
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request)
-    }
-
-    return new Response('vPulse Edge API is running. Build and deploy frontend assets.', {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain' },
-    })
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runProbes(env, { scheduled: true }).catch(error => {
+      console.error(JSON.stringify({ event: 'scheduled_probe_failed', error: error instanceof Error ? error.message : 'unknown' }))
+      throw error
+    }))
   },
-}
+} satisfies ExportedHandler<Env>

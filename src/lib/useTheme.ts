@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { readPreference, savePreference } from './storage'
 
 export type Theme = 'dark' | 'light'
 
@@ -7,7 +8,7 @@ const STORAGE_KEY = 'vpulse-theme'
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'dark'
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = readPreference(STORAGE_KEY)
     if (stored === 'light' || stored === 'dark') return stored
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
@@ -18,7 +19,7 @@ export function useTheme() {
     root.classList.toggle('dark', isDark)
     root.classList.toggle('theme-dark', isDark)
     root.classList.toggle('theme-light', !isDark)
-    localStorage.setItem(STORAGE_KEY, theme)
+    savePreference(STORAGE_KEY, theme)
   }, [theme])
 
   const toggleTheme = useCallback(() => {

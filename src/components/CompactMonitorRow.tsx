@@ -16,12 +16,13 @@ import {
 } from 'lucide-react'
 import { Monitor } from '../types'
 import { HeartbeatBar } from './HeartbeatBar'
-import { formatLatency, formatDateTime, formatRelativeTime } from '../lib/format'
+import { formatLatency, formatDateTime, formatRelativeTime, formatUptimePercent } from '../lib/format'
 
 interface CompactMonitorRowProps {
   monitor: Monitor
   isRefreshing?: boolean
   isExpanded?: boolean
+  isHighlighted?: boolean
   onToggleExpand: () => void
   onSingleProbe?: (id: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
@@ -31,6 +32,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
   monitor,
   isRefreshing = false,
   isExpanded = false,
+  isHighlighted = false,
   onToggleExpand,
   onSingleProbe,
   onDelete,
@@ -41,6 +43,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
 
   const isUp = monitor.current_status === 1
   const isDegraded = monitor.current_status === 2
+  const isUnknown = monitor.current_status === -1
+  const [actionError, setActionError] = useState('')
 
   // Extract hostname cleanly
   const hostname = (() => {
@@ -57,11 +61,13 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
   // Recent 5 events for detailed event stream in expanded drawer
   const recentEvents = [...monitor.heartbeats].slice(-5).reverse()
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    void navigator.clipboard.writeText(monitor.url)
-    setIsCopied(true)
-    setTimeout(() => setIsCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(monitor.url)
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000)
+    } catch { setActionError('无法复制，请手动选择地址') }
   }
 
   const handleSingleProbe = async (e: React.MouseEvent) => {
@@ -88,20 +94,31 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
 
   return (
     <div
-      className={`group transition-all duration-200 ${
-        isExpanded ? 'bg-[var(--pulse-card-hover)]/40' : ''
+      id={`monitor-${monitor.id}`}
+      className={`group transition-all duration-300 ${
+        isHighlighted
+          ? 'bg-emerald-500/10 ring-1 ring-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.12)]'
+          : isExpanded
+          ? 'bg-[var(--pulse-card-hover)]/40'
+          : ''
       }`}
     >
       {/* ── 1. The Compact Uptime-Kuma Row (Slim, ~48px) ────────────────── */}
       <div
         onClick={onToggleExpand}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        aria-controls={`details-${monitor.id}`}
+        aria-label={`${monitor.name}详情`}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggleExpand() } }}
         className="flex items-center justify-between gap-3 px-4 py-3 sm:py-3.5 cursor-pointer hover:bg-[var(--pulse-card-hover)] select-none transition-colors"
       >
         {/* Left: Status Dot & Name & Hostname */}
         <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-initial sm:min-w-[240px] md:min-w-[300px]">
           {/* Status Indicator Dot with live radar pulse */}
           <div className="relative flex h-3 w-3 shrink-0 items-center justify-center">
-            {isUp ? (
+            {isUnknown ? <span className="relative h-2.5 w-2.5 rounded-full bg-slate-400" /> : isUp ? (
               <>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -144,7 +161,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 title={
                   isBlank
                     ? '排队等待探活'
-                    : `${beat.latency_ms} ms · ${formatRelativeTime(beat.timestamp)}`
+                    : `${formatLatency(beat.latency_ms)} · HTTP ${beat.status_code ?? '无响应'} · ${beat.message || ''} · ${formatRelativeTime(beat.timestamp)}`
                 }
               />
             )
@@ -169,7 +186,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
 
           {/* 30d Uptime Percentage */}
           <div className="hidden xs:block text-xs font-mono-numeric font-medium text-emerald-500 min-w-[50px] text-right">
-            {monitor.uptime_30d.toFixed(1)}%
+            {formatUptimePercent(monitor.uptime_30d)}
           </div>
 
           {/* Expand Chevron Icon */}
@@ -185,8 +202,10 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
 
       {/* ── 2. Expanded Accordion Details Drawer with GPU-accelerated Grid Animation ── */}
       <div
+        id={`details-${monitor.id}`}
         className={`accordion-grid ${isExpanded ? 'is-expanded' : ''}`}
         aria-hidden={!isExpanded}
+        inert={!isExpanded}
       >
         <div className="accordion-inner">
           <div className="border-t border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 px-4 py-5 sm:px-6 space-y-5">
@@ -195,7 +214,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
             <div className="flex items-center justify-between text-xs text-[var(--pulse-text-dim)] mb-2">
               <span className="font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5">
                 <Radio className="h-3.5 w-3.5 text-emerald-500" />
-                全景心跳时序 (最近 60 次周期)
+                全景心跳时序 (最近 60 次探测)
               </span>
               <span>悬停方块可查看每次探测详情</span>
             </div>
@@ -214,10 +233,10 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 <Zap className="h-3.5 w-3.5 text-emerald-500" />
               </div>
               <div className="text-base sm:text-lg font-bold font-mono-numeric text-[var(--pulse-text)]">
-                {monitor.current_latency_ms} <span className="text-xs font-normal">ms</span>
+                {formatLatency(monitor.current_latency_ms)}
               </div>
               <div className="text-[11px] text-emerald-500 mt-0.5">
-                {isUp ? '当前连接通畅' : isDegraded ? '响应偏高' : '连接中断'}
+                {isUnknown ? '未探测或数据已过期' : isUp ? '当前连接通畅' : isDegraded ? '服务降级' : '探测失败'}
               </div>
             </div>
 
@@ -227,23 +246,23 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 <Clock className="h-3.5 w-3.5 text-[var(--pulse-text-muted)]" />
               </div>
               <div className="text-base sm:text-lg font-bold font-mono-numeric text-[var(--pulse-text)]">
-                {monitor.avg_latency_ms} <span className="text-xs font-normal">ms</span>
+                {formatLatency(monitor.avg_latency_ms)}
               </div>
               <div className="text-[11px] text-[var(--pulse-text-dim)] mt-0.5">
-                过去 60 周期均值
+                最近 60 次有效均值
               </div>
             </div>
 
             <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-3">
               <div className="flex items-center justify-between text-xs text-[var(--pulse-text-dim)] mb-1">
-                <span>30天可用率 (SLA)</span>
+                <span>30 天观测可用率</span>
                 <Server className="h-3.5 w-3.5 text-emerald-500" />
               </div>
               <div className="text-base sm:text-lg font-bold font-mono-numeric text-emerald-500">
-                {monitor.uptime_30d.toFixed(2)}%
+                {formatUptimePercent(monitor.uptime_30d)}
               </div>
               <div className="text-[11px] text-[var(--pulse-text-dim)] mt-0.5">
-                边缘高可用保障
+                观测覆盖率 {monitor.coverage_30d.toFixed(2)}%
               </div>
             </div>
 
@@ -259,7 +278,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               <div className="text-sm sm:text-base font-bold text-[var(--pulse-text)] mt-0.5">
                 {monitor.url.toLowerCase().startsWith('https://') ? (
                   <span className="text-emerald-400 flex items-center gap-1.5 font-mono text-xs sm:text-sm">
-                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> TLS 1.3 正常
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> 配置为 HTTPS
                   </span>
                 ) : (
                   <span className="text-[var(--pulse-text-muted)] text-xs sm:text-sm font-mono">
@@ -269,7 +288,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               </div>
               <div className="text-[11px] mt-1 text-[var(--pulse-text-dim)]">
                 {monitor.url.toLowerCase().startsWith('https://') ? (
-                  <span className="text-emerald-500/90">Cloudflare 边缘托管 · 自动轮换</span>
+                  <span className="text-[var(--pulse-text-dim)]">未测量 TLS 版本与证书有效期</span>
                 ) : (
                   <span className="text-amber-500/80">未启用 TLS 证书加密</span>
                 )}
@@ -363,11 +382,12 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
           </div>
 
           {/* D. Recent Event Stream (Uptime Kuma Style Incident / Heartbeat Logs) */}
+          {actionError && <p role="alert" className="text-xs text-amber-500">{actionError}</p>}
           <div className="pt-2 border-t border-[var(--pulse-border)]">
             <div className="flex items-center justify-between text-xs text-[var(--pulse-text-muted)] mb-2 font-medium">
               <span>近期探活日志流水 (最近 5 次)</span>
               <span className="text-[11px] text-[var(--pulse-text-dim)]">
-                来源: Cloudflare Global Edge
+                最近真实探测记录
               </span>
             </div>
             <div className="rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] overflow-hidden divide-y divide-[var(--pulse-border)] text-xs">
@@ -376,25 +396,25 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 return (
                   <div
                     key={`evt-${evt.timestamp}-${idx}`}
-                    className="flex items-center justify-between px-3 py-2 text-[var(--pulse-text-dim)]"
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[var(--pulse-text-dim)]"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span
                         className={`inline-block h-2 w-2 rounded-full ${
                           evtUp ? 'bg-emerald-500' : evt.status === 2 ? 'bg-amber-500' : 'bg-rose-500'
                         }`}
                       />
                       <span className="text-[var(--pulse-text)] font-mono">
-                        {evtUp ? '200 OK' : 'ERR'}
+                        {evt.status === -1 ? '等待探测' : evt.status_code !== null ? `HTTP ${evt.status_code}` : '网络异常'}
                       </span>
-                      <span className="text-[var(--pulse-text-muted)]">
-                        {evt.message || '正常响应'}
+                      <span className="text-[var(--pulse-text-muted)] break-all">
+                        {evt.message || (evtUp ? '正常响应' : '未提供诊断信息')}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <span className="font-mono-numeric text-[var(--pulse-text)]">
-                        {evt.latency_ms} ms
+                        {formatLatency(evt.latency_ms)}
                       </span>
                       <span className="text-[11px] text-[var(--pulse-text-dim)]">
                         {formatDateTime(evt.timestamp)}

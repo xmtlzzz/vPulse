@@ -35,6 +35,7 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--pulse-text-dim)]" />
         <input
           type="text"
+          aria-label="搜索监控项目"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="搜索监控项目名称、域名或分组..."
@@ -43,6 +44,7 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
         {searchQuery && (
           <button
             type="button"
+            aria-label="清空搜索"
             onClick={() => onSearchChange('')}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text)] p-0.5"
           >
@@ -56,7 +58,7 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
         {/* Count Summary */}
         <div className="text-[11px] text-[var(--pulse-text-dim)] hidden md:block">
           共 <span className="font-mono-numeric text-[var(--pulse-text)]">{totalCount}</span> 项
-          {healthyCount === totalCount ? (
+          {totalCount === 0 ? <span className="ml-1">· 暂无监控</span> : healthyCount === totalCount ? (
             <span className="text-emerald-500 ml-1">· 全部正常</span>
           ) : (
             <span className="text-amber-500 ml-1">· {healthyCount}/{totalCount} 正常</span>

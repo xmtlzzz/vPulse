@@ -8,188 +8,102 @@ import { GlobalNavPill } from './components/GlobalNavPill'
 import { AddMonitorModal } from './components/AddMonitorModal'
 import { useTheme } from './lib/useTheme'
 import { useDynamicFavicon } from './lib/useDynamicFavicon'
-import {
-  fetchStatus,
-  triggerProbe,
-  probeSingleMonitorById,
-  deleteMonitorById,
-  FALLBACK_STATUS,
-} from './lib/api'
-import { StatusResponse, Monitor } from './types'
+import { fetchStatus, triggerProbe, probeSingleMonitorById, deleteMonitorById, EMPTY_STATUS } from './lib/api'
+import { readPreference, savePreference } from './lib/storage'
+import { groupMonitors, markUnavailable, remainingSeconds, projectFreshness } from './lib/status'
+import type { StatusResponse } from './types'
 
 export function App() {
   const { isDark, toggleTheme } = useTheme()
-  const [data, setData] = useState<StatusResponse>(FALLBACK_STATUS)
+  const [data, setData] = useState<StatusResponse>(EMPTY_STATUS)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [networkError, setNetworkError] = useState('')
+  const [notice, setNotice] = useState('')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-
-  // Dynamic Browser Title and Favicon
-  useDynamicFavicon(data.overall, data.monitors)
-
-  // View preferences
-  const [viewMode, setViewMode] = useState<'compact' | 'cards'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('vpulse-view-mode')
-      if (saved === 'cards' || saved === 'compact') return saved
-    }
-    return 'compact'
-  })
-
-  // Set of currently expanded monitor IDs (accordion)
+  const [viewMode, setViewMode] = useState<'compact' | 'cards'>(() => readPreference('vpulse-view-mode') === 'cards' ? 'cards' : 'compact')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-
-  // Search keyword query
   const [searchQuery, setSearchQuery] = useState('')
+  const [isAutoProbeEnabled, setIsAutoProbeEnabled] = useState(true)
+  const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000))
+  const [hoveredMonitorId, setHoveredMonitorId] = useState<string | null>(null)
+  const requestSequence = useRef(0)
+  const isProbingRef = useRef(false)
+  const displayData = useMemo(() => projectFreshness(data, clock), [data, clock])
+  const countdown = remainingSeconds(displayData.overall.next_check_at, clock)
+  useDynamicFavicon(displayData.overall, displayData.monitors)
+
+  const hasActiveIncident = useMemo(
+    () => displayData.incidents.some((i) => i.status !== 'resolved'),
+    [displayData.incidents]
+  )
+
+  const handleSelectMonitorFromIncident = (monitorId: string) => {
+    setExpandedIds((prev) => new Set(prev).add(monitorId))
+    const el = document.getElementById(`monitor-${monitorId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 
   const handleViewModeChange = (mode: 'compact' | 'cards') => {
-    setViewMode(mode)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vpulse-view-mode', mode)
-    }
+    setViewMode(mode); savePreference('vpulse-view-mode', mode)
   }
-
-  const AUTO_PROBE_INTERVAL = 180 // 3 minutes (180s) auto probe cycle
-  const LAST_PROBE_KEY = 'vpulse-last-probe-time'
-
-  // Helper to compute remaining seconds based on an anchor timestamp
-  const getRemainingSeconds = (anchor: number) => {
-    const now = Math.floor(Date.now() / 1000)
-    const elapsed = now - anchor
-    if (elapsed < 0) return AUTO_PROBE_INTERVAL
-    if (elapsed >= AUTO_PROBE_INTERVAL) return 0
-    return AUTO_PROBE_INTERVAL - elapsed
-  }
-
-  // Anchor of the last probe (persisted in localStorage across refreshes)
-  const [lastProbeAnchor, setLastProbeAnchor] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(LAST_PROBE_KEY)
-      if (saved) {
-        const parsed = parseInt(saved, 10)
-        if (!isNaN(parsed) && parsed > 0) return parsed
-      }
-    }
-    return Math.floor(Date.now() / 1000)
-  })
-
-  // Live countdown remaining seconds
-  const [countdown, setCountdown] = useState<number>(() =>
-    getRemainingSeconds(lastProbeAnchor)
-  )
-  const [isAutoProbeEnabled, setIsAutoProbeEnabled] = useState(true)
-  const isProbingRef = useRef(false)
-
-  const loadData = useCallback(async () => {
-    const res = await fetchStatus()
-    setData(res)
-
-    // Calculate real newest timestamp from server
-    let newestHb = res.overall.updated_at || 0
-    if (res.monitors) {
-      for (const m of res.monitors) {
-        if (m.heartbeats) {
-          for (const hb of m.heartbeats) {
-            if (hb.status !== -1 && hb.timestamp > newestHb) {
-              newestHb = hb.timestamp
-            }
-          }
-        }
-      }
-    }
-
-    if (newestHb > 0) {
-      setLastProbeAnchor(newestHb)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LAST_PROBE_KEY, String(newestHb))
-      }
-      const rem = getRemainingSeconds(newestHb)
-      setCountdown(rem)
+  const loadData = useCallback(async (signal?: AbortSignal) => {
+    const sequence = ++requestSequence.current
+    try {
+      const result = await fetchStatus(signal)
+      if (sequence !== requestSequence.current || signal?.aborted) return
+      setData(result); setNetworkError('')
+    } catch (error) {
+      if (sequence !== requestSequence.current || signal?.aborted) return
+      setData(markUnavailable)
+      setNetworkError(error instanceof Error ? error.message : '无法读取监控状态')
+    } finally {
+      if (sequence === requestSequence.current && !signal?.aborted) setIsLoading(false)
     }
   }, [])
 
-  const executeProbeCycle = useCallback(async () => {
-    if (isProbingRef.current) return
-    isProbingRef.current = true
-    setIsRefreshing(true)
-    const startTime = performance.now()
-    try {
-      await triggerProbe()
-      await loadData()
-      const now = Math.floor(Date.now() / 1000)
-      setLastProbeAnchor(now)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LAST_PROBE_KEY, String(now))
-      }
-      setCountdown(AUTO_PROBE_INTERVAL)
-    } finally {
-      const elapsed = performance.now() - startTime
-      if (elapsed < 600) {
-        await new Promise((resolve) => setTimeout(resolve, 600 - elapsed))
-      }
-      setIsRefreshing(false)
-      isProbingRef.current = false
-    }
-  }, [loadData])
-
-  // Initial load on mount
   useEffect(() => {
-    void loadData()
+    const controller = new AbortController()
+    void loadData(controller.signal)
+    return () => { controller.abort(); requestSequence.current++ }
   }, [loadData])
-
-  // Real second-by-second countdown anchored to true time difference
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [])
   useEffect(() => {
     if (!isAutoProbeEnabled) return
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void loadData() }, 15000)
+    const visible = () => { if (document.visibilityState === 'visible') void loadData() }
+    document.addEventListener('visibilitychange', visible)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visible) }
+  }, [isAutoProbeEnabled, loadData])
 
-    const timer = setInterval(() => {
-      if (isProbingRef.current) return
-
-      const now = Math.floor(Date.now() / 1000)
-      const elapsed = now - lastProbeAnchor
-
-      if (elapsed >= AUTO_PROBE_INTERVAL) {
-        setCountdown(0)
-        void executeProbeCycle()
-      } else {
-        setCountdown(Math.max(0, AUTO_PROBE_INTERVAL - elapsed))
-      }
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [isAutoProbeEnabled, lastProbeAnchor, executeProbeCycle])
-
-  // Auto reload when tab gains visibility
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void loadData()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [loadData])
-
-  const handleManualRefresh = () => {
-    void executeProbeCycle()
+  const handleManualRefresh = async () => {
+    if (isProbingRef.current) return
+    isProbingRef.current = true; setIsRefreshing(true); setNotice('')
+    try {
+      const result = await triggerProbe()
+      setNotice(result.debounced ? result.message || '当前处于探测冷却期，未重复探测' : '巡检完成')
+      await loadData()
+    } catch (error) { setNotice(error instanceof Error ? error.message : '巡检失败') }
+    finally { isProbingRef.current = false; setIsRefreshing(false) }
   }
-
-  const handleToggleAutoProbe = () => {
-    setIsAutoProbeEnabled((prev) => !prev)
-  }
-
+  const handleToggleAutoProbe = () => setIsAutoProbeEnabled(value => !value)
   const handleSingleProbe = async (id: string) => {
-    await probeSingleMonitorById(id)
-    await loadData()
+    try {
+      const result = await probeSingleMonitorById(id)
+      setNotice(result.debounced ? result.message || '该监控项处于冷却期，未重复探测' : '单项巡检完成')
+      await loadData()
+    } catch (error) { setNotice(error instanceof Error ? error.message : '单项巡检失败') }
   }
-
   const handleDeleteMonitor = async (id: string) => {
-    await deleteMonitorById(id)
-    // Remove from expanded set if deleted
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-    await loadData()
+    const result = await deleteMonitorById(id)
+    if (!result.success) { setNotice(result.error || '删除失败'); return }
+    setExpandedIds(previous => { const next = new Set(previous); next.delete(id); return next })
+    setNotice('监控项已删除'); await loadData()
   }
 
   const handleToggleExpand = (id: string) => {
@@ -219,26 +133,18 @@ export function App() {
 
   // Filtered monitors based on search
   const filteredMonitors = useMemo(() => {
-    if (!searchQuery.trim()) return data.monitors
+    if (!searchQuery.trim()) return displayData.monitors
     const q = searchQuery.toLowerCase().trim()
-    return data.monitors.filter(
+    return displayData.monitors.filter(
       (m) =>
         m.name.toLowerCase().includes(q) ||
         m.url.toLowerCase().includes(q) ||
         (m.group_name && m.group_name.toLowerCase().includes(q))
     )
-  }, [data.monitors, searchQuery])
+  }, [displayData.monitors, searchQuery])
 
   // Group monitors by group_name
-  const groupedMonitors = useMemo(() => {
-    const groups: Record<string, Monitor[]> = {}
-    for (const monitor of filteredMonitors) {
-      const g = monitor.group_name || '其他服务'
-      if (!groups[g]) groups[g] = []
-      groups[g].push(monitor)
-    }
-    return groups
-  }, [filteredMonitors])
+  const groupedMonitors = useMemo(() => groupMonitors(filteredMonitors), [filteredMonitors])
 
   const isAllExpanded =
     filteredMonitors.length > 0 &&
@@ -254,7 +160,7 @@ export function App() {
 
   const existingGroups = useMemo(() => {
     const set = new Set<string>()
-    for (const m of data.monitors) {
+    for (const m of displayData.monitors) {
       if (m.group_name && m.group_name.trim()) {
         set.add(m.group_name.trim())
       }
@@ -264,7 +170,7 @@ export function App() {
       set.add('边缘服务与存储 (Edge & Storage)')
     }
     return Array.from(set)
-  }, [data.monitors])
+  }, [displayData.monitors])
 
   return (
     <div className="min-h-screen flex flex-col relative selection:bg-emerald-500 selection:text-black">
@@ -286,7 +192,7 @@ export function App() {
         onToggleTheme={toggleTheme}
         isRefreshing={isRefreshing}
         onRefresh={handleManualRefresh}
-        lastUpdated={data.overall.updated_at}
+        lastUpdated={displayData.overall.updated_at}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         countdown={countdown}
         isAutoProbeEnabled={isAutoProbeEnabled}
@@ -297,64 +203,82 @@ export function App() {
       <AddMonitorModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onSuccess={() => handleManualRefresh()}
+        onSuccess={() => { setNotice('监控项已接入'); void loadData() }}
         existingGroups={existingGroups}
       />
 
       {/* Main Status Container */}
-      <main className="relative z-10 flex-1 mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 space-y-7 pb-28">
-        {/* 1. Overall System Status Banner */}
+      <main className="relative z-10 flex-1 mx-auto w-full max-w-[1360px] px-4 py-8 sm:px-6 lg:px-8 space-y-7 pb-28">
+        {(networkError || notice) && (
+          <div role={networkError ? 'alert' : 'status'} className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-[var(--pulse-text)]">
+            {networkError ? '状态读取失败：' + networkError + (data.monitors.length ? '。已保留最后一次记录，当前状态未知。' : '。当前状态未知，暂无历史记录可展示。') : notice}
+          </div>
+        )}
+
+        {/* 1. Overall System Status Banner (Top Panoramic Health Metrics) */}
         <OverallStatusBanner
-          overall={data.overall}
+          overall={displayData.overall}
           isRefreshing={isRefreshing}
         />
 
-        {/* 2. Incidents & Announcements */}
-        <IncidentSection
-          incidents={data.incidents}
-          monitors={data.monitors}
-        />
+        {/* 2. Asymmetric Dual-Column Layout (vMaker Editorial Design) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] gap-8 items-start">
+          {/* Left Column: Incident & Recovery Timeline (Sticky on desktop, matching vMaker commit list) */}
+          <aside className={`${hasActiveIncident ? 'order-1' : 'order-2'} lg:order-1 lg:sticky lg:top-24 space-y-4`}>
+            <IncidentSection
+              incidents={displayData.incidents}
+              monitors={displayData.monitors}
+              hoveredMonitorId={hoveredMonitorId}
+              onHoverMonitor={setHoveredMonitorId}
+              onSelectMonitor={handleSelectMonitorFromIncident}
+            />
+          </aside>
 
-        {/* 3. Search & View Mode Toolbar */}
-        <MonitorToolbar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-          isAllExpanded={isAllExpanded}
-          onToggleAllExpand={handleToggleAllExpand}
-          totalCount={data.monitors.length}
-          healthyCount={data.overall.healthy_count}
-        />
+          {/* Right Column: Search Toolbar & Grouped Monitors */}
+          <div className={`${hasActiveIncident ? 'order-2' : 'order-1'} lg:order-2 min-w-0 space-y-6`}>
+            {/* Search & View Mode Toolbar */}
+            <MonitorToolbar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
+              isAllExpanded={isAllExpanded}
+              onToggleAllExpand={handleToggleAllExpand}
+              totalCount={displayData.monitors.length}
+              healthyCount={displayData.overall.healthy_count}
+            />
 
-        {/* 4. Grouped Monitors (Uptime Kuma compact rows by default) */}
-        <div className="space-y-7">
-          {Object.keys(groupedMonitors).length === 0 ? (
-            <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-8 text-center text-xs text-[var(--pulse-text-dim)]">
-              未找到与 &quot;{searchQuery}&quot; 匹配的监控服务
+            {/* Grouped Monitors (Uptime Kuma compact rows by default) */}
+            <div className="space-y-7">
+              {groupedMonitors.size === 0 ? (
+                <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-8 text-center text-xs text-[var(--pulse-text-dim)]">
+                  {isLoading ? '正在读取真实监控状态…' : searchQuery ? '未找到匹配的监控服务' : networkError ? '暂无可用的监控数据' : '尚未添加监控服务'}
+                </div>
+              ) : (
+                Array.from(groupedMonitors).map(([groupName, monitors]) => (
+                  <MonitorGroup
+                    key={groupName}
+                    groupName={groupName}
+                    monitors={monitors}
+                    isRefreshing={isRefreshing}
+                    viewMode={viewMode}
+                    expandedIds={expandedIds}
+                    onToggleExpand={handleToggleExpand}
+                    onToggleGroupExpand={handleToggleGroupExpand}
+                    onSingleProbe={handleSingleProbe}
+                    onDelete={handleDeleteMonitor}
+                    hoveredMonitorId={hoveredMonitorId}
+                  />
+                ))
+              )}
             </div>
-          ) : (
-            Object.entries(groupedMonitors).map(([groupName, monitors]) => (
-              <MonitorGroup
-                key={groupName}
-                groupName={groupName}
-                monitors={monitors}
-                isRefreshing={isRefreshing}
-                viewMode={viewMode}
-                expandedIds={expandedIds}
-                onToggleExpand={handleToggleExpand}
-                onToggleGroupExpand={handleToggleGroupExpand}
-                onSingleProbe={handleSingleProbe}
-                onDelete={handleDeleteMonitor}
-              />
-            ))
-          )}
+          </div>
         </div>
 
         {/* Footer */}
         <footer className="pt-8 border-t border-[var(--pulse-border)] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--pulse-text-dim)]">
           <p>
-            vPulse · 运行于 Cloudflare 全球边缘网络 (Workers + D1 + Cron)
+            vPulse · Cloudflare 定时巡检 (Workers + D1 + Cron)
           </p>
           <div className="flex items-center gap-4">
             <a

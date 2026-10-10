@@ -7,16 +7,21 @@ import { formatLatency } from '../lib/format'
 interface MonitorCardProps {
   monitor: Monitor
   isRefreshing?: boolean
+  isHighlighted?: boolean
 }
 
 export const MonitorCard: React.FC<MonitorCardProps> = ({
   monitor,
   isRefreshing = false,
+  isHighlighted = false,
 }) => {
   const isUp = monitor.current_status === 1
   const isDegraded = monitor.current_status === 2
+  const isUnknown = monitor.current_status === -1
 
-  const statusBadge = isUp
+  const statusBadge = isUnknown
+    ? { bg: 'bg-slate-500/10 text-slate-400 border-slate-500/25', dot: 'bg-slate-400', label: monitor.stale && monitor.last_checked_at ? '数据已过期' : '等待探测' }
+    : isUp
     ? {
         bg: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25',
         dot: 'bg-emerald-500',
@@ -26,7 +31,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
       ? {
           bg: 'bg-amber-500/10 text-amber-500 border-amber-500/25',
           dot: 'bg-amber-500',
-          label: '响应缓慢',
+          label: '服务降级',
         }
       : {
           bg: 'bg-rose-500/10 text-rose-500 border-rose-500/25',
@@ -36,7 +41,12 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
 
   return (
     <div
-      className={`group rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--pulse-border-hover)] hover:bg-[var(--pulse-card-hover)] ${
+      id={`monitor-${monitor.id}`}
+      className={`group rounded-xl border transition-all duration-300 p-4 sm:p-5 ${
+        isHighlighted
+          ? 'border-emerald-500/60 ring-2 ring-emerald-500/30 bg-[var(--pulse-card-hover)] shadow-[0_0_20px_rgba(16,185,129,0.15)]'
+          : 'border-[var(--pulse-border)] bg-[var(--pulse-card)] hover:border-[var(--pulse-border-hover)] hover:bg-[var(--pulse-card-hover)]'
+      } ${
         isRefreshing ? 'card-probing' : ''
       }`}
     >
@@ -100,14 +110,15 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
         />
       </div>
 
+      <p className="text-[11px] text-[var(--pulse-text-dim)]">30 天观测覆盖：{monitor.coverage_30d}%</p>
+
       {/* Footer Meta Row */}
       <div className="mt-3 pt-3 border-t border-[var(--pulse-border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--pulse-text-dim)]">
         <div className="flex items-center gap-1.5">
           {monitor.url.toLowerCase().startsWith('https://') ? (
             <>
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">TLS 1.3 安全加密</span>
-              <span className="text-[var(--pulse-text-dim)]">· 自动轮转续期</span>
+              <span className="text-[var(--pulse-text-muted)] font-medium">配置为 HTTPS</span>
             </>
           ) : (
             <>
@@ -123,7 +134,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
           </span>
           <span>·</span>
           <span>
-            平均延迟: <strong className="font-mono-numeric font-normal text-[var(--pulse-text)]">{monitor.avg_latency_ms}ms</strong>
+            平均延迟: <strong className="font-mono-numeric font-normal text-[var(--pulse-text)]">{formatLatency(monitor.avg_latency_ms)}</strong>
           </span>
         </div>
       </div>

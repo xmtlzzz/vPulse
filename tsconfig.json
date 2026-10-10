@@ -8,6 +8,8 @@
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -21,5 +23,5 @@
     },
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src", "worker", "vite.config.ts"]
+  "include": ["src", "worker", "vite.config.ts", "worker-configuration.d.ts"]
 }

@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+.monitor-dialog {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 1rem;
+  background: var(--pulse-card);
+  color: var(--pulse-text);
+}
+.monitor-dialog::backdrop { background: rgb(0 0 0 / 60%); backdrop-filter: blur(4px); }
+:focus-visible { outline: 2px solid var(--pulse-emerald); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
 :root {
   --pulse-bg: #07080b;
   --pulse-card: #0d0f17;
@@ -202,4 +220,28 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ── Sleek Minimalist Custom Scrollbar ────────────────────────────────────── */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pulse-border) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--pulse-border);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--pulse-border-hover);
+}
+
 

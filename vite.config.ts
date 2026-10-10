@@ -2,10 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
-import { edgeApiDevPlugin } from './src/dev-middleware'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), edgeApiDevPlugin()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -13,5 +12,6 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    proxy: { '/api': 'http://127.0.0.1:5175' },
   },
 })

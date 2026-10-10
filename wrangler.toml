@@ -11,7 +11,7 @@ compatibility_date = "2025-08-01"
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = true
+run_worker_first = ["/api/*"]
 
 # ── Cloudflare D1 Database ────────────────────────────────────────────────────
 # Run: npx wrangler d1 create vpulse-db to obtain your real database_id
@@ -20,14 +20,15 @@ binding = "DB"
 database_name = "vpulse-db"
 database_id = "70cb6136-5df2-4efc-8228-a3f04e4ee262"
 
-# ── Automated Health Probes (Every 3 minutes) ─────────────────────────────────
+# Check due monitors every 3 minutes; each monitor keeps its own interval.
 [triggers]
 crons = ["*/3 * * * *"]
 
 # ── Environment Variables ─────────────────────────────────────────────────────
 [vars]
-SITE_URL = "https://pulse.xmtlz.dev"
-APP_NAME = "vPulse"
-# 告警推送 Webhook 地址 (支持飞书、钉钉、Telegram、Discord，留空则不推送)
-WEBHOOK_URL = ""
+# Store WEBHOOK_URL with `wrangler secret put WEBHOOK_URL`; unset disables delivery.
+WEBHOOK_TYPE = "generic"
+
+[observability]
+enabled = true
 

@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local Wrangler only. Set a private value before use.
+ADMIN_TOKEN="replace-with-your-local-secret"
+# Optional webhook secrets belong in .dev.vars or wrangler secret, never git.
+# WEBHOOK_URL="https://your-provider.example/webhook"
+# TELEGRAM_CHAT_ID="your-chat-id"

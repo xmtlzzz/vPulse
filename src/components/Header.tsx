@@ -7,9 +7,9 @@ interface HeaderProps {
   onToggleTheme: () => void
   isRefreshing: boolean
   onRefresh: () => void
-  lastUpdated: number
+  lastUpdated: number | null
   onOpenAddModal: () => void
-  countdown?: number
+  countdown?: number | null
   isAutoProbeEnabled?: boolean
   onToggleAutoProbe?: () => void
 }
@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <p className="text-xs text-[var(--pulse-text-dim)]">
-              边缘分布式健康探针 · 自动化巡检
+              服务健康探针 · 服务端定时巡检
             </p>
           </div>
         </div>
@@ -55,8 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onToggleAutoProbe || onRefresh}
             title={
               isAutoProbeEnabled
-                ? `自动巡检已开启 · 每 3 分钟自动探测 · ${Math.floor((countdown ?? 180) / 60)}:${((countdown ?? 180) % 60).toString().padStart(2, '0')} 后执行下一次探活 (内置防抖锁，点击可手动探活)`
-                : '自动巡检已暂停 · 点击开启'
+                ? '每 15 秒刷新看板；点击暂停当前页面刷新，服务端巡检继续运行'
+                : '当前页面刷新已暂停；点击恢复，服务端巡检继续运行'
             }
             className={`hidden sm:flex items-center gap-2 rounded-full border bg-[var(--pulse-card)] px-3 py-1.5 text-xs transition-colors duration-200 cursor-pointer ${
               isRefreshing
@@ -70,10 +70,10 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
             <span>
               {isRefreshing
-                ? '全网探测执行中...'
+                ? '巡检执行中...'
                 : isAutoProbeEnabled
-                  ? `自动巡检 · ${Math.floor((countdown ?? 180) / 60)}:${((countdown ?? 180) % 60).toString().padStart(2, '0')}`
-                  : '自动巡检暂停'}
+                  ? countdown == null ? '等待首次巡检' : countdown === 0 ? '等待服务端巡检' : `下次巡检 · ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
+                  : '页面刷新暂停'}
             </span>
           </button>
 
@@ -87,7 +87,8 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'border-emerald-500/40 text-emerald-400 shadow-xs'
                 : 'border-[var(--pulse-border)] text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)]'
             }`}
-            title="立刻触发全网节点探活"
+            title="管理员：立即巡检全部监控"
+            aria-label="立即巡检全部监控"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`}
@@ -103,6 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 text-xs font-medium text-[var(--pulse-text-muted)] transition-all hover:border-emerald-500/40 hover:text-emerald-400"
             title="添加新的监控服务项目"
+            aria-label="添加新的监控服务项目"
           >
             <Plus className="h-3.5 w-3.5 text-emerald-500" />
             <span className="hidden sm:inline">添加项目</span>

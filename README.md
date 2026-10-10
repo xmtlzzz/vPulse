@@ -1,4 +1,4 @@
-# ⚡ vPulse — 次世代边缘分布式健康监控与状态看板
+# ⚡ vPulse — 次世代边缘健康监控与状态看板
 
 <div align="center">
 
@@ -6,60 +6,72 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Cloudflare D1](https://img.shields.io/badge/Cloudflare-D1_SQLite-F38020?style=flat-square&logo=sqlite&logoColor=white)](https://developers.cloudflare.com/d1/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS_v4-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg?style=flat-square)](LICENSE)
 
-**致敬 [Uptime Kuma](https://github.com/louislam/uptime-kuma) 经典交互美学的 Cloudflare 原生全栈 Serverless 分布式健康探针**  
+**致敬 [Uptime Kuma](https://github.com/louislam/uptime-kuma) 经典交互美学的 Cloudflare 原生全栈 Serverless 健康探针**<br>
 与 **[vMaker](https://vmaker.xmtlz.dev)**（创意开发档案）及 **[vBlog](https://vblog.xmtlz.dev)**（独立博客）构成统一设计语言的现代化开发者全家桶。
 
 [🌐 在线演示 (Live Demo)](https://vpulse.xmtlzloveasuka.workers.dev) · [✨ 核心特性](#-核心特性) · [🏗️ 架构设计](#-架构设计) · [🚀 快速开始](#-快速开始) · [☁️ 部署指南](#-cloudflare-部署指南) · [📖 API 手册](#-rest-api-接口规范)
 
 </div>
 
+> 部署在 Cloudflare 边缘运行时；当前实现不包含主动多地域采样或地域聚合。在线演示以实际部署版本为准。
+
 ---
 
 ## 🌟 核心特性
 
 ### 1. 极致交互美学（Uptime Kuma 紧凑风）
-* **48px 紧凑流线行（Compact Row）**：默认以极高信息密度的单行形态罗列各项服务，包含实时状态雷达脉冲灯、服务名称、域名徽标、36 槽位微型心跳条、实时毫秒级响应延迟与 30 天 SLA 可用率。
-* **GPU 硬件加速手风琴抽屉（Accordion Drawer）**：基于现代 CSS Grid (`0fr` $\to$ `1fr`) 实现 300ms 丝滑展开，展开后呈现：
+
+* **48px 紧凑流线行（Compact Row）**：默认以极高信息密度的单行形态罗列各项服务，包含实时状态雷达脉冲灯、服务名称、域名徽标、36 槽位微型心跳条、最近一次探测的毫秒级响应延迟与 30 天观测可用率。
+* **平滑手风琴抽屉（Accordion Drawer）**：基于现代 CSS Grid (`0fr` $\to$ `1fr`) 实现 300ms 丝滑展开，展开后呈现：
   * **60 周期全景心跳时序（Interactive Heartbeat Bar）**：支持悬停任意色块查看单次探测的精确时间、延迟及诊断信息。
-  * **4 维关键指标卡片**：实时延迟、60 周期均值、30 天可用率、TLS 1.3 传输加密状态。
+  * **4 维关键指标卡片**：实时延迟、60 周期均值、30 天观测可用率、HTTPS 配置状态（不检测 TLS 版本或证书有效期）。
   * **快捷操作工具栏**：即刻单站测速、一键复制地址、直达站点、删除项目。
   * **最近 5 次探活日志流水**：实时展示 Cloudflare 边缘节点返回的状态码与响应描述。
 * **卡片与紧凑双视图无缝切换**：右上角支持一键切换卡片视图与紧凑视图，选择自动持久化至本地存储。
 
-### 2. 真实时间锚点与持久化倒计时
-* **真·倒计时持久化**：顶栏胶囊实时显示 `自动巡检 · 2:45`，倒计时直接与服务端最近一次探活的**真实时间戳（`updated_at`）**与 LocalStorage 进行绝对时间差锚定。**页面刷新（F5）或重新打开标签页绝不重置为 3:00**，彻底杜绝虚假内存计数。
+### 2. 真实时间锚点与巡检倒计时
+
+* **服务端时间锚点**：顶栏胶囊显示 `下次巡检 · 2:45`，倒计时依据服务端返回的 **`next_check_at`** 与当前时间计算。页面刷新后仍以服务端时间为准；没有记录时显示等待首次巡检，到期后显示等待服务端巡检。暂停按钮只暂停当前页面刷新，服务端巡检继续运行。
 * **页面可见性同步（Page Visibility API）**：浏览器标签页切换或电脑休眠唤醒切回页面时，自动校准最新数据。
 
 ### 3. 空白槽位尾部推进机制（Tail Push-Forward）
-* 新添加的监控服务初始呈现 **59 个半透明等待槽位 + 1 个尾部首探槽位**。
-* 随着每轮自动巡检的持续进行，新的绿色心跳色块从右侧尾部逐格向前推进并替换等待格，物理呈现真实的历史积累过程，彻底告别冷启动伪造数据。
+
+* 新添加的监控服务完成首次真实探测后，60 槽位心跳条呈现 **59 个半透明等待槽位 + 1 个尾部首探槽位**；紧凑行使用 36 槽位。
+* 随着每轮自动巡检的持续进行，新的心跳色块按真实结果显示绿、黄或红，从右侧尾部逐格向前推进并替换等待格，物理呈现真实的历史积累过程，彻底告别冷启动伪造数据。
 
 ### 4. 服务端多层防抖冷却锁（Debounce Lock）
-* **全量探活 90 秒冷却锁**：当客户端调用 `POST /api/probe` 时，服务端自动校验 D1 数据库中最新心跳时间戳。若距离上次探测不足 90 秒，直接复用最新状态并返回冷却提示，彻底避免多访客并发踩踏或被测站点遭受无意冲击。
+
+* **全量探活 90 秒冷却锁**：管理员调用 `POST /api/probe` 时，服务端校验 D1 中最近一次全量巡检完成时间。若不足 90 秒，返回冷却提示；单站测速不会重置全量冷却。定时巡检另按每项监控的到期时间执行。
 * **单站测速 30 秒冷却锁**：单站点手动测速内置 30 秒独立保护。
-* **强制穿透通道**：管理员确需立即测试时可通过 `?force=1` 绕过防抖锁。
+* **强制巡检通道**：管理员可通过 `?force=1` 跳过冷却；仍受 D1 原子租约和请求限流约束，避免并发重复执行。新增、删除和手动探测均需管理员鉴权。
 
 ### 5. Cloudflare D1 & KV 深度合成探针（Synthetic Health Check）
-* 不仅仅做浅层 HTTP Ping：针对私有边缘存储（KV、D1），通过规范的 `/api/health` 探针在 Worker 内部实际执行 `SELECT 1` 与 `KV.get()`，实时返回真实底层存储延迟（如 `d1:23ms · kv:6ms`），在控制面板一目了然。
+
+* 不仅仅做浅层 HTTP Ping：在**业务 Worker** 中提供 `/api/health` 端点，实际执行 `SELECT 1` 与 `KV.get()` 并返回组件结果，vPulse 从 HTTP 响应中读取存储耗时（如 `d1:23ms · kv:6ms`）及健康状态。vPulse 不直接访问其他 Worker 的私有绑定。
 
 ### 6. 动态分类选择与自适应防碰撞
+
 * **所属分类双模式**：添加新监控项时，既可以从现有数据库中已存在的分组下拉选择（配有常用分类快捷胶囊一键切换），也可以直接切换为自行新增分类。
-* **ID 防碰撞机制**：服务标识自适应附加唯一随机短哈希与 `INSERT OR REPLACE` 策略，彻底杜绝主键唯一约束（`UNIQUE constraint failed`）报错。
+* **ID 防碰撞机制**：使用 UUID 和普通 `INSERT` 创建独立记录，避免因名称重复而覆盖已有监控；创建数量上限在数据库写入时检查。
 
 ### 7. 动态 Favicon 与标题告警
-* 监听全局监控状态：全站正常时呈现绿色心跳图标与「全部服务正常」；发生部分降级或服务宕机时，网页标题与 Favicon 实时变为黄/红报警状态。
 
-### 8. 零运维成本（$0/月）与额度安全精算
-* 全栈托管于 Cloudflare 免费计划：Workers + D1 + Cron + Static Assets。
-* **资源消耗精算（按 3 监控项、3 分钟巡检一次）**：
-  * **Worker 请求数**：每天仅 480 次（占 10 万次免费额度的 **0.48%**）。
-  * **D1 写入行数**：每天仅 1,440 行（占 10 万行免费额度的 **1.44%**）。
-  * **D1 存储容量**：内置 30 天自动滚动清理机制，常驻数据约 13 MB（占 5 GB 额度的 **0.26%**）。
-  * 额度极其安全，彻底告别单点服务器宕机风险。
+* 监听全局监控状态：全站正常时呈现绿色心跳图标与「全部服务正常」；发生部分降级或服务宕机时，网页标题与 Favicon 变为黄/红报警状态；无记录、缺测或数据过期时显示灰色未知状态。
+
+### 8. Serverless 托管与资源预算
+
+* 全栈使用 Cloudflare Workers + D1 + Cron + Static Assets，无需自行维护常驻服务器。
+* **基础消耗估算（按 3 监控项、每项 3 分钟巡检一次）**：
+  * **Cron 调度**：每 3 分钟检查到期项目，每天约 480 次调度；不等同于每天全部 Worker 请求数。
+  * **心跳记录**：正常调度下每天约 1,440 条，额外手动探测会增加记录，每次尝试包含 A/AAAA DNS 检查及目标 HTTP 请求，失败重试和重定向会增加外部请求。
+  * **D1 用量**：还包含索引、巡检租约、故障事件、通知和缓存等读写，不能只按心跳行数估算。
+  * **存储与访问**：心跳保留最近 30 天及边界计算所需的宽限数据；公开状态共享快照最多缓存 60 秒，探测及监控增删后失效。实际成本取决于访客量、数据量和账户计划，不承诺固定为 $0/月。
+
+> **可用率口径**：30 天观测可用率按真实样本维持的时间加权，UP 与 DEGRADED 计为可用，缺测时间不计入分母，观测覆盖率单独显示。样本最多维持到其新鲜度期限，不足 30 天或存在缺测时不能视为完整 SLA；总体可用率为有观测项目的等权均值。平均延迟取最近 60 次中非 DOWN 且有有效延迟的记录。
 
 ---
 
@@ -69,27 +81,27 @@
                             ┌────────────────────────────────────────┐
                             │    Cloudflare Cron (*/3 * * * *)       │
                             └───────────────────┬────────────────────┘
-                                                │ 触发 3 分钟定时巡检
+                                                │ 每 3 分钟检查，按各项间隔巡检
                                                 ▼
 ┌────────────────────────────────────────────────────────────────────────────────────┐
 │                             vPulse Cloudflare Worker                               │
 │                                                                                    │
-│   并发边缘探测 (HEAD / GET 并发控制器 + 1x 防抖重试机制):                            │
+│   并发边缘探测 (HEAD / GET，最多 3 项并发 + 失败重试一次):                         │
 │   ├── vMaker 独立站:    https://vmaker.xmtlz.dev (200 OK)                          │
 │   ├── vBlog 独立博客:   https://vblog.xmtlz.dev (200 OK)                           │
 │   ├── D1/KV 深度探针:   https://vblog.xmtlz.dev/api/health (d1:23ms · kv:6ms)      │
 │   └── 用户自定义监控项:  https://...                                               │
 │                                                                                    │
-│   核心控制层:                                                                      │
-│   ├── 90s 全网防抖冷却锁 (Debounce Lock)                                           │
-│   ├── 懒加载兜底探活 (Stale Auto-Probe via ctx.waitUntil)                           │
-│   └── Webhook 告警分发 (支持飞书、钉钉、Telegram、Discord)                         │
+│   核心控制层 (上方地址与耗时为示例):                                               │
+│   ├── 管理员鉴权、90s 全量冷却与 D1 原子租约                                       │
+│   ├── 只读状态查询、共享快照缓存与逐项新鲜度检查                                   │
+│   └── Webhook 告警、恢复通知与持久化重试                                           │
 └───────────────────────────┬──────────────────────────────────┬─────────────────────┘
-                            │ 写入心跳流水 (自动裁剪 >30 天)   │ 响应 JSON 状态
+                            │ 心跳保留 30 天及边界数据         │ 响应 JSON 状态
                             ▼                                  ▼
                 ┌──────────────────────┐           ┌──────────────────────┐
                 │  Cloudflare D1 (DB)  │           │   vPulse 前端 SPA    │
-                │  (vpulse-db 分布式)  │           │   (React 19 + Vite)  │
+                │  (vpulse-db SQLite)  │           │   (React 19 + Vite)  │
                 └──────────────────────┘           └──────────────────────┘
 ```
 
@@ -110,23 +122,32 @@ vPulse/
 │   │   ├── IncidentSection.tsx   # 故障事件广播与自动降级公告
 │   │   └── GlobalNavPill.tsx     # v-Ecosystem 全家桶快速跳转 Dock
 │   ├── lib/                      # 核心工具库
-│   │   ├── api.ts                # REST API 客户端与本地离线回退引擎
+│   │   ├── api.ts                # 统一 REST API 客户端与管理员鉴权
+│   │   ├── status.ts             # 新鲜度判定与未知状态投影
+│   │   ├── storage.ts            # 本地偏好存储的容错封装
 │   │   ├── format.ts             # 时间戳、延迟与相对时间格式化
 │   │   ├── useTheme.ts           # 暗黑/浅色模式平滑切换 Hook
 │   │   └── useDynamicFavicon.ts  # 状态驱动的浏览器标题与 Favicon 变色
 │   ├── types.ts                  # 全局 TypeScript 接口定义
-│   ├── dev-middleware.ts         # Vite 本地开发环境探活中间件 (带 3min 定时引擎)
-│   ├── App.tsx                   # 根应用组件 (时间锚点同步与探活调度)
+│   ├── App.tsx                   # 根应用组件 (状态刷新、时间锚点同步与手动巡检)
 │   └── main.tsx                  # 应用入口挂载点
 ├── worker/                       # Cloudflare Worker 后端源码
 │   ├── index.ts                  # Worker 路由网关、Cron 调度与防抖锁
 │   ├── probe.ts                  # 并发 HTTP 探活、JSON 深度解析与容错重试
-│   ├── db.ts                     # D1 数据库驱动、心跳查询与防碰撞插入
-│   └── default-monitors.ts       # 默认系统监控服务预设
+│   ├── db.ts                     # D1 数据库驱动、观测统计与故障事件
+│   ├── scheduler.ts             # 到期巡检、并发租约与状态持久化
+│   ├── alerts.ts                # Webhook 消息协议与持久化重试
+│   ├── status.ts                # 共享状态快照与版本失效
+│   ├── validation.ts            # 输入、域名与公网地址校验
+│   └── env.ts                   # Worker 环境类型
 ├── dist/                         # 生产打包静态产物目录
-├── schema.sql                    # Cloudflare D1 数据库结构与初始化索引
+├── schema.sql                    # 初始数据库结构及预置监控
+├── migrations/                   # D1 增量迁移
+├── tests/                        # 隔离数据库与网络替身回归测试
+├── worker-configuration.d.ts      # Wrangler 生成的绑定类型
+├── .dev.vars.example             # 本地管理员密钥配置示例
 ├── wrangler.toml                 # Cloudflare Worker、D1 绑定与 Cron 配置
-├── deploy.ps1                    # 自动化 Windows 代理感知与一键构建部署脚本
+├── deploy.ps1                    # Windows 测试、构建、迁移与部署脚本
 ├── vite.config.ts                # Vite 配置文件
 └── package.json                  # 项目依赖与执行脚本
 ```
@@ -137,25 +158,47 @@ vPulse/
 
 ### 1. 克隆项目与安装依赖
 
+需要 **Node.js 22.19 或更新版本**（测试使用 Node 内置 SQLite）。
+
 ```bash
 git clone https://github.com/xmtlzzz/vPulse.git
 cd vPulse
-npm install
+npm ci
 ```
 
 ### 2. 本地开发调试
 
-```bash
-npm run dev
-# 浏览器访问 http://localhost:5173
-```
-> **提示**：本地开发环境由 [`src/dev-middleware.ts`](file:///c:/Users/Administrator/Desktop/code/vPulse/src/dev-middleware.ts) 全权接管，内置了真实的 3 分钟定时探活机制与防抖模拟，无需连接远程 Cloudflare 即可完整体验绿格子从尾部持续推进的效果！
-
-### 3. 本地构建生产资源
+先构建静态资源并初始化本地 D1：
 
 ```bash
 npm run build
+npm run d1:init
 ```
+
+复制 [`.dev.vars.example`](.dev.vars.example) 为 `.dev.vars`，设置自己的 `ADMIN_TOKEN`。管理员可直接在页面添加可信的公网 HTTP(S) 域名，无需维护 TOML 域名白名单或重新部署。
+
+两个终端分别启动后端和前端：
+
+```bash
+npm run worker:dev
+```
+
+```bash
+npm run dev
+# 浏览器访问 http://localhost:5174
+```
+
+> **提示**：Vite 将 `/api` 代理至本地 Wrangler（127.0.0.1:5175），使用真实 Worker 逻辑和本地 D1。Wrangler 本地开发不会自动运行 Cron；可在“添加项目”弹窗保存管理员密钥，再点击“立即探活”生成真实记录。测试定时入口可使用启动日志提供的 scheduled URL。`npm run preview` 仅预览静态资源，不能独立提供 API。
+
+### 3. 本地检查与构建生产资源
+
+```bash
+npm run check                 # 回归测试、类型检查及前端构建
+npm run types                 # 绑定配置变更后重新生成类型
+npx wrangler deploy --dry-run # Worker 打包验证
+```
+
+仅构建前端可运行 `npm run build`。CI 执行回归测试和构建检查；测试包含真实 workerd 运行时、隔离数据库与网络替身，不请求生产目标。
 
 ---
 
@@ -177,20 +220,29 @@ database_name = "vpulse-db"
 database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
-将该 `database_id` 填入项目根目录下的 [`wrangler.toml`](file:///c:/Users/Administrator/Desktop/code/vPulse/wrangler.toml) 中。
+将该 `database_id` 填入项目根目录下的 [`wrangler.toml`](wrangler.toml) 中。
 
 ### 2. 执行数据库结构初始化
 
-在远程 D1 数据库中创建表与索引：
+仅对**全新数据库**创建基础表、预置监控并应用增量迁移：
 
 ```bash
-# 执行本地 schema.sql 到远程 Cloudflare D1
-npx wrangler d1 execute vpulse-db --file=./schema.sql --remote
+npm run d1:init:remote
 ```
 
-### 3. 一键编译并部署到 Cloudflare
+已有数据库升级只应用 `migrations/` 中的增量迁移，不要重新执行 `schema.sql`，以免重新插入预置监控。部署命令会自动执行迁移。
 
-使用项目附带的自动化部署脚本（支持 Windows 代理自动识别与构建验证）：
+### 3. 配置管理员并一键部署到 Cloudflare
+
+首次部署设置管理员密钥：
+
+```bash
+npx wrangler secret put ADMIN_TOKEN
+```
+
+管理员密钥未配置时，管理入口返回 503；密钥错误时返回 401。界面中的密钥仅保存在当前标签页的 sessionStorage。不要将密钥提交到仓库，也不要在公开展示的监控 URL 中包含私密查询参数。
+
+使用项目附带的自动化部署脚本（依次测试、构建、应用迁移及部署，支持从其他目录调用）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy.ps1
@@ -202,43 +254,62 @@ powershell -ExecutionPolicy Bypass -File .\deploy.ps1
 npm run deploy
 ```
 
-部署完成后，Cloudflare 将输出 Worker 访问地址（例如 `https://vpulse.<你的域名>.workers.dev`），全局 3 分钟定时巡检自动上线运行！
+部署完成后，Cloudflare 将输出 Worker 访问地址（例如 `https://vpulse.<你的域名>.workers.dev`），Cron 每 3 分钟检查到期项目，并按各项 `interval_min` 筛选巡检目标（默认 3 分钟；自动调度最小粒度为 3 分钟）。
+
+### 4. 配置 Webhook 告警（可选）
+
+在 `wrangler.toml` 设置 `WEBHOOK_TYPE`：`generic`、`discord`、`telegram`、`feishu` 或 `dingtalk`。通过 Secret 保存地址：
+
+```bash
+npx wrangler secret put WEBHOOK_URL
+# Telegram 还需配置：
+npx wrangler secret put TELEGRAM_CHAT_ID
+```
+
+状态变化及恢复会生成持久化事件并通知，首次正常不通知。投递限时 5 秒，失败退避重试，最多 5 次，记录保留 7 天；响应丢失可能导致重复投递。飞书、钉钉需使用接受文本消息的 Webhook，目前不支持平台特有的签名鉴权。未配置地址时不投递。
 
 ---
 
 ## 📖 REST API 接口规范
 
-vPulse 提供纯粹无状态的 REST API，可轻松对接到第三方 CI/CD 或自动化运维系统：
+vPulse 提供 REST API，可对接第三方 CI/CD 或自动化运维系统。公开查询不发起外部探测；新增、删除、手动探测和连接测试必须携带 `Authorization: Bearer <ADMIN_TOKEN>`，管理请求不允许跨站调用。
 
 ### 1. 获取完整监控状态与心跳
+
 ```http
 GET /api/status
 ```
-* **说明**：拉取所有监控项、当前延迟、30天 SLA 以及最近 60 次心跳流水。
+
+* **说明**：拉取所有监控项、最近延迟、30 天观测可用率/覆盖率、最近 60 次心跳及故障历史。无记录、读取失败或超过新鲜度期限的结果显示未知。
 * **参数**：
-  * `probe=1`（可选）：强制唤醒边缘后台即刻探测最新状态。
+  * `probe=1`（可选，需管理员鉴权）：兼容入口，等待强制巡检完成后返回状态；仍受租约和限流约束。
 
 ### 2. 触发全网探活
+
 ```http
 POST /api/probe
+Authorization: Bearer <ADMIN_TOKEN>
 ```
+
 * **说明**：立即对所有已启用的监控服务发起并发探活。
 * **参数**：
   * `id=<monitor_id>`（可选）：仅针对指定单个服务发起测速（含 30s 独立冷却）。
-  * `force=1`（可选）：穿透 90 秒防抖锁，强制发起全网探测。
+  * `force=1`（可选）：跳过全量或单站冷却，仍受租约和限流约束。
 * **防抖响应示例**：
 ```json
 {
   "success": true,
   "debounced": true,
-  "cooldown_remaining_sec": 76,
-  "message": "系统处于防抖冷却保护期（剩余 76 秒），已复用最新全网心跳"
+  "probed_count": 0,
+  "cooldown_remaining_sec": 76
 }
 ```
 
 ### 3. 实时连接性探测预览
+
 ```http
 POST /api/probe-test
+Authorization: Bearer <ADMIN_TOKEN>
 Content-Type: application/json
 
 {
@@ -246,44 +317,67 @@ Content-Type: application/json
   "method": "GET"
 }
 ```
-* **说明**：在添加项目前，测试目标端点握手状态与毫秒级延迟。
+
+* **说明**：在添加项目前，测试公网目标端点及毫秒级响应延迟，不保存为监控记录，无需预先配置域名。
 
 ### 4. 动态注册新监控项
+
 ```http
 POST /api/monitors
 Content-Type: application/json
-Authorization: Bearer <ADMIN_TOKEN> (可选)
+Authorization: Bearer <ADMIN_TOKEN>
 
 {
   "name": "新边缘服务",
   "url": "https://service.xmtlz.dev",
   "group_name": "核心站点 (Portals)",
   "method": "GET",
-  "expected_status": 200
+  "expected_status": 200,
+  "interval_min": 3,
+  "timeout_ms": 6000
 }
 ```
 
+* **说明**：管理员可直接添加新的公网域名；创建时执行首次真实探测，后续由定时任务持续巡检。
+
 ### 5. 删除监控服务
+
 ```http
 DELETE /api/monitors?id=<monitor_id>
-Authorization: Bearer <ADMIN_TOKEN> (可选)
+Authorization: Bearer <ADMIN_TOKEN>
 ```
+
+* **说明**：删除监控与心跳，关闭关联活动事件，保留故障历史。
+
+### 6. 其他公开查询与请求边界
+
+* `GET /api/monitors`：返回监控及最近 60 次记录。
+* `GET /api/health`：检查 D1 可用性与各项监控新鲜度；依赖或调度异常返回 503。
+* 最多 20 项监控、3 项并发；间隔 1–60 分钟，单次尝试超时 100–10000ms，失败最多重试一次。仅支持 GET/HEAD，HTTP 状态须精确匹配配置。
+* 管理探测和 CRUD 各限 20 次/分钟，连接测试限 6 次/分钟。目标须为公网 HTTP(S) 域名，拒绝 URL 凭据、IP 字面量、私网后缀与非标准端口。每次尝试及重定向前，通过 Cloudflare DNS over HTTPS 检查 A/AAAA 解析结果，拒绝非公网地址，DNS 失败时不请求目标；重定向最多 3 次。请求正文上限 8 KiB，健康接口 JSON 上限 64 KiB，DNS 检查也受单次尝试的超时及正文上限约束。
+
+> 域名安全检查使用 [Cloudflare DNS over HTTPS](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/)。DNS 预检查与 Worker 的实际连接分别解析域名，不提供 DNS 重绑定的绝对隔离；管理员应添加可信的公网服务。旧的 `PROBE_ALLOWED_HOSTS` 变量不再使用，可移除。
 
 ---
 
 ## 💡 最佳实践：如何为 Cloudflare KV / D1 编写探针
 
-由于 Cloudflare KV 和 D1 属于私有边缘资源，没有公网 HTTP 接口，行业标准规范是在您的业务 Worker 中开放轻量级探针端点：
+要检查业务 Worker 内部的 KV 和 D1 绑定，可在该 Worker 中提供轻量级探针端点：
 
 ```typescript
-// 粘贴到你的任意 Cloudflare Worker 代码中:
+// 集成到已有业务 Worker 的路由中，并配置 DB 与 MY_KV 绑定:
+interface HealthEnv {
+  DB: D1Database;
+  MY_KV: KVNamespace;
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: HealthEnv) {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
       const t0 = performance.now();
-      
+
       // 测试 D1 数据库查询延迟与 KV 读取延迟
       await env.DB.prepare('SELECT 1').run();
       const d1Latency = Math.round(performance.now() - t0);
@@ -295,23 +389,26 @@ export default {
       return Response.json({
         status: 'UP',
         components: {
-          d1: { latency_ms: d1Latency },
-          kv: { latency_ms: kvLatency },
+          d1: { status: 'UP', latency_ms: d1Latency },
+          kv: { status: 'UP', latency_ms: kvLatency },
         },
         colo: request.cf?.colo || 'EDGE'
       });
     }
 
     // ... 其他业务路由
+    return new Response('Not found', { status: 404 });
   }
 }
 ```
 
-在 vPulse 添加项目时填入该 Worker 地址，vPulse 将自动提取并展示 `d1:23ms · kv:6ms` 的深层存储耗时！
+管理员在 vPulse 中以 GET 添加该健康端点地址即可，无需修改域名配置。vPulse 会在诊断信息中展示 `d1:23ms · kv:6ms` 等组件耗时；延迟指标仍表示整个 HTTP 探测耗时。JSON 顶层及组件的 DOWN/ERROR/FAIL/FAILED/UNHEALTHY 判为故障，DEGRADED/WARN/WARNING 判为降级；普通无健康字段的 JSON 依据 HTTP 状态判断。
 
 ---
 
 ## 📄 开源许可证
+
+审查与修复验证见 [REVIEW_REPORT.md](REVIEW_REPORT.md)。
 
 本项目基于 [MIT 许可证](LICENSE) 开源。欢迎 Star、Fork 或提交 Pull Request！
 
