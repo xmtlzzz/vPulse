@@ -220,12 +220,17 @@ export function edgeApiDevPlugin(): Plugin {
             return sendJson(res, { error: 'Name and URL are required' }, 400)
           }
 
-          const id =
+          const baseId =
             body.name
               .toLowerCase()
               .replace(/[^a-z0-9]/g, '-')
               .replace(/-+/g, '-')
               .replace(/^-|-$/g, '') || `mon-${Date.now()}`
+
+          let id = baseId
+          if (devMonitors.some((m) => m.id === id)) {
+            id = `${baseId}-${Math.random().toString(36).substring(2, 6)}`
+          }
 
           const monConfig: MonitorConfig = {
             id,

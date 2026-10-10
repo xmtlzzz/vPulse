@@ -224,14 +224,29 @@ export async function createMonitor(
   },
   db?: D1Database
 ): Promise<MonitorConfig> {
-  const id =
+  const baseId =
     data.id ||
     data.name
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '') ||
-    `mon-${Date.now()}`
+    'mon'
+
+  let id = baseId
+  if (db) {
+    try {
+      const existing = await db
+        .prepare('SELECT id FROM monitors WHERE id = ?')
+        .bind(id)
+        .first()
+      if (existing) {
+        id = `${baseId}-${Math.random().toString(36).substring(2, 6)}`
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const monitor: MonitorConfig = {
     id,
@@ -249,7 +264,7 @@ export async function createMonitor(
   if (db) {
     await db
       .prepare(
-        `INSERT INTO monitors (id, name, group_name, url, method, expected_status, interval_min, timeout_ms, order_num, enabled, created_at)
+        `INSERT OR REPLACE INTO monitors (id, name, group_name, url, method, expected_status, interval_min, timeout_ms, order_num, enabled, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
