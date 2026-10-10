@@ -1,5 +1,5 @@
 import React from 'react'
-import { ExternalLink, ShieldCheck, Zap, Globe } from 'lucide-react'
+import { ExternalLink, ShieldCheck, ShieldAlert, Zap, Globe } from 'lucide-react'
 import { Monitor } from '../types'
 import { HeartbeatBar } from './HeartbeatBar'
 import { formatLatency } from '../lib/format'
@@ -103,11 +103,18 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
       {/* Footer Meta Row */}
       <div className="mt-3 pt-3 border-t border-[var(--pulse-border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--pulse-text-dim)]">
         <div className="flex items-center gap-1.5">
-          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500/80" />
-          <span>SSL 证书有效</span>
-          <span className="text-[var(--pulse-text-muted)]">
-            (剩余约 {monitor.ssl_days_remaining} 天)
-          </span>
+          {monitor.url.toLowerCase().startsWith('https://') ? (
+            <>
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-emerald-400 font-medium">TLS 1.3 安全加密</span>
+              <span className="text-[var(--pulse-text-dim)]">· 自动轮转续期</span>
+            </>
+          ) : (
+            <>
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-[var(--pulse-text-dim)]">明文 HTTP 协议</span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

@@ -3,6 +3,8 @@ import {
   ChevronDown,
   ExternalLink,
   ShieldCheck,
+  ShieldAlert,
+  Lock,
   Zap,
   RefreshCw,
   Copy,
@@ -247,27 +249,29 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
 
             <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-3">
               <div className="flex items-center justify-between text-xs text-[var(--pulse-text-dim)] mb-1">
-                <span>SSL 证书有效期</span>
-                <ShieldCheck
-                  className={`h-3.5 w-3.5 ${
-                    monitor.ssl_days_remaining > 0 ? 'text-emerald-500' : 'text-[var(--pulse-text-dim)]'
-                  }`}
-                />
-              </div>
-              <div className="text-base sm:text-lg font-bold font-mono-numeric text-[var(--pulse-text)]">
-                {monitor.ssl_days_remaining > 0 ? (
-                  <>
-                    {monitor.ssl_days_remaining} <span className="text-xs font-normal">天</span>
-                  </>
+                <span>TLS / 传输加密</span>
+                {monitor.url.toLowerCase().startsWith('https://') ? (
+                  <Lock className="h-3.5 w-3.5 text-emerald-500" />
                 ) : (
-                  <span className="text-xs font-normal text-[var(--pulse-text-dim)]">未启用 (HTTP)</span>
+                  <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
                 )}
               </div>
-              <div className="text-[11px] mt-0.5">
-                {monitor.ssl_days_remaining > 0 ? (
-                  <span className="text-emerald-500">TLS 1.3 安全加密</span>
+              <div className="text-sm sm:text-base font-bold text-[var(--pulse-text)] mt-0.5">
+                {monitor.url.toLowerCase().startsWith('https://') ? (
+                  <span className="text-emerald-400 flex items-center gap-1.5 font-mono text-xs sm:text-sm">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> TLS 1.3 正常
+                  </span>
                 ) : (
-                  <span className="text-[var(--pulse-text-dim)]">明文传输协议</span>
+                  <span className="text-[var(--pulse-text-muted)] text-xs sm:text-sm font-mono">
+                    明文 HTTP 协议
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] mt-1 text-[var(--pulse-text-dim)]">
+                {monitor.url.toLowerCase().startsWith('https://') ? (
+                  <span className="text-emerald-500/90">Cloudflare 边缘托管 · 自动轮换</span>
+                ) : (
+                  <span className="text-amber-500/80">未启用 TLS 证书加密</span>
                 )}
               </div>
             </div>
