@@ -5,11 +5,13 @@ import { MonitorCard } from './MonitorCard'
 interface MonitorGroupProps {
   groupName: string
   monitors: Monitor[]
+  isRefreshing?: boolean
 }
 
 export const MonitorGroup: React.FC<MonitorGroupProps> = ({
   groupName,
   monitors,
+  isRefreshing = false,
 }) => {
   const allHealthy = monitors.every((m) => m.current_status === 1)
   const avgGroupUptime =
@@ -44,7 +46,11 @@ export const MonitorGroup: React.FC<MonitorGroupProps> = ({
       {/* Cards List */}
       <div className="space-y-3">
         {monitors.map((monitor) => (
-          <MonitorCard key={monitor.id} monitor={monitor} />
+          <MonitorCard
+            key={monitor.id}
+            monitor={monitor}
+            isRefreshing={isRefreshing}
+          />
         ))}
       </div>
     </div>

@@ -5,11 +5,13 @@ import { formatDateTime, formatRelativeTime } from '../lib/format'
 interface HeartbeatBarProps {
   heartbeats: Heartbeat[]
   uptimePercent: number
+  isRefreshing?: boolean
 }
 
 export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
   heartbeats,
   uptimePercent,
+  isRefreshing = false,
 }) => {
   const [hoveredBeat, setHoveredBeat] = useState<{
     beat: Heartbeat
@@ -52,38 +54,51 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
         </div>
       )}
 
-      {/* The 60-slot Capsule Pill Strip */}
-      <div
-        className="flex h-8 items-center justify-between gap-[3px] py-1"
-        onMouseLeave={() => setHoveredBeat(null)}
-      >
-        {slots.map((beat, idx) => {
-          const isUp = beat.status === 1
-          const isDegraded = beat.status === 2
+      {/* The 60-slot Capsule Pill Strip Container */}
+      <div className="relative overflow-hidden rounded-xs">
+        {/* Radar Scanning Line during Refresh */}
+        {isRefreshing && <div className="radar-scan-line" />}
 
-          const barColor = isUp
-            ? 'bg-emerald-500 hover:bg-emerald-400'
-            : isDegraded
-              ? 'bg-amber-500 hover:bg-amber-400'
-              : 'bg-rose-500 hover:bg-rose-400'
+        <div
+          className="flex h-8 items-center justify-between gap-[3px] py-1"
+          onMouseLeave={() => setHoveredBeat(null)}
+        >
+          {slots.map((beat, idx) => {
+            const isUp = beat.status === 1
+            const isDegraded = beat.status === 2
+            const isLatest = idx === slots.length - 1
 
-          return (
-            <div
-              key={`${beat.timestamp}-${idx}`}
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
-                const beatRect = e.currentTarget.getBoundingClientRect()
-                if (rect) {
-                  const relativeX =
-                    ((beatRect.left + beatRect.width / 2 - rect.left) / rect.width) *
-                    100
-                  setHoveredBeat({ beat, x: relativeX, index: idx })
+            const barColor = isUp
+              ? 'bg-emerald-500 hover:bg-emerald-400'
+              : isDegraded
+                ? 'bg-amber-500 hover:bg-amber-400'
+                : 'bg-rose-500 hover:bg-rose-400'
+
+            return (
+              <div
+                key={`${beat.timestamp}-${idx}`}
+                style={
+                  isRefreshing
+                    ? { animationDelay: `${(idx % 15) * 60}ms` }
+                    : undefined
                 }
-              }}
-              className={`heartbeat-capsule flex-1 h-6 cursor-pointer rounded-xs ${barColor}`}
-            />
-          )
-        })}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                  const beatRect = e.currentTarget.getBoundingClientRect()
+                  if (rect) {
+                    const relativeX =
+                      ((beatRect.left + beatRect.width / 2 - rect.left) / rect.width) *
+                      100
+                    setHoveredBeat({ beat, x: relativeX, index: idx })
+                  }
+                }}
+                className={`heartbeat-capsule flex-1 h-6 cursor-pointer rounded-xs ${barColor} ${
+                  isRefreshing ? 'capsule-refreshing' : isLatest ? 'latest-slot-ping' : ''
+                }`}
+              />
+            )
+          })}
+        </div>
       </div>
 
       {/* Labels below strip */}

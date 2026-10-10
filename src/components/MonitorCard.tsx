@@ -6,9 +6,13 @@ import { formatLatency } from '../lib/format'
 
 interface MonitorCardProps {
   monitor: Monitor
+  isRefreshing?: boolean
 }
 
-export const MonitorCard: React.FC<MonitorCardProps> = ({ monitor }) => {
+export const MonitorCard: React.FC<MonitorCardProps> = ({
+  monitor,
+  isRefreshing = false,
+}) => {
   const isUp = monitor.current_status === 1
   const isDegraded = monitor.current_status === 2
 
@@ -31,7 +35,11 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({ monitor }) => {
         }
 
   return (
-    <div className="group rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-4 sm:p-5 transition-all duration-200 hover:border-[var(--pulse-border-hover)] hover:bg-[var(--pulse-card-hover)]">
+    <div
+      className={`group rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--pulse-border-hover)] hover:bg-[var(--pulse-card-hover)] ${
+        isRefreshing ? 'card-probing' : ''
+      }`}
+    >
       {/* Top Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         {/* Name & URL */}
@@ -60,17 +68,25 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({ monitor }) => {
         {/* Status & Latency Badges */}
         <div className="flex items-center gap-2 self-start sm:self-center">
           {/* Latency */}
-          <div className="flex items-center gap-1 rounded-md border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2.5 py-1 text-xs font-mono-numeric text-[var(--pulse-text)]">
-            <Zap className="h-3 w-3 text-emerald-500" />
-            <span>{formatLatency(monitor.current_latency_ms)}</span>
+          <div className="flex items-center gap-1.5 rounded-md border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2.5 py-1 text-xs font-mono-numeric text-[var(--pulse-text)]">
+            <Zap
+              className={`h-3 w-3 ${isRefreshing ? 'animate-pulse text-emerald-400' : 'text-emerald-500'}`}
+            />
+            <span>
+              {isRefreshing ? '实时测速中' : formatLatency(monitor.current_latency_ms)}
+            </span>
           </div>
 
           {/* Status Badge */}
           <span
             className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${statusBadge.bg}`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.dot}`} />
-            {statusBadge.label}
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${statusBadge.dot} ${
+                isRefreshing ? 'animate-ping' : ''
+              }`}
+            />
+            {isRefreshing ? '检测中' : statusBadge.label}
           </span>
         </div>
       </div>
@@ -80,6 +96,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({ monitor }) => {
         <HeartbeatBar
           heartbeats={monitor.heartbeats}
           uptimePercent={monitor.uptime_30d}
+          isRefreshing={isRefreshing}
         />
       </div>
 

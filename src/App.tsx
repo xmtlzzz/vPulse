@@ -29,10 +29,15 @@ export function App() {
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true)
+    const startTime = performance.now()
     try {
       await triggerProbe()
       await loadData()
     } finally {
+      const elapsed = performance.now() - startTime
+      if (elapsed < 600) {
+        await new Promise((resolve) => setTimeout(resolve, 600 - elapsed))
+      }
       setIsRefreshing(false)
     }
   }
@@ -50,6 +55,13 @@ export function App() {
 
   return (
     <div className="min-h-screen flex flex-col relative selection:bg-emerald-500 selection:text-black">
+      {/* Top Refresh Laser Bar during probe */}
+      {isRefreshing && (
+        <div className="refresh-progress-bar">
+          <div className="refresh-progress-indicator" />
+        </div>
+      )}
+
       {/* Ambient background light */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-emerald-500/5 blur-[120px]" />
@@ -67,7 +79,10 @@ export function App() {
       {/* Main Status Container */}
       <main className="relative z-10 flex-1 mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 space-y-8 pb-28">
         {/* 1. Overall System Status Banner */}
-        <OverallStatusBanner overall={data.overall} />
+        <OverallStatusBanner
+          overall={data.overall}
+          isRefreshing={isRefreshing}
+        />
 
         {/* 2. Incidents & Announcements */}
         <IncidentSection incidents={data.incidents} />
@@ -79,6 +94,7 @@ export function App() {
               key={groupName}
               groupName={groupName}
               monitors={monitors}
+              isRefreshing={isRefreshing}
             />
           ))}
         </div>

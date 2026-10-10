@@ -5,9 +5,13 @@ import { formatUptimePercent, formatLatency, formatRelativeTime } from '../lib/f
 
 interface OverallStatusBannerProps {
   overall: OverallStatus
+  isRefreshing?: boolean
 }
 
-export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({ overall }) => {
+export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
+  overall,
+  isRefreshing = false,
+}) => {
   const isAllUp = overall.status === 'operational'
   const isDegraded = overall.status === 'degraded'
 
@@ -63,8 +67,10 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({ overal
         </div>
 
         <div className="flex items-center gap-1.5 self-start sm:self-center text-xs text-[var(--pulse-text-dim)]">
-          <Clock className="h-3.5 w-3.5" />
-          <span>上次巡检: {formatRelativeTime(overall.updated_at)}</span>
+          <Clock className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
+          <span className={isRefreshing ? 'font-medium text-emerald-500 animate-pulse' : ''}>
+            {isRefreshing ? '正在全网探活巡检中...' : `上次巡检: ${formatRelativeTime(overall.updated_at)}`}
+          </span>
         </div>
       </div>
 

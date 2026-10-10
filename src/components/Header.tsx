@@ -42,12 +42,18 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Actions */}
         <div className="flex items-center gap-3">
           {/* Live Indicator Pill */}
-          <div className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs text-[var(--pulse-text-muted)]">
+          <div
+            className={`hidden sm:flex items-center gap-2 rounded-full border bg-[var(--pulse-card)] px-3 py-1.5 text-xs transition-colors duration-200 ${
+              isRefreshing
+                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/5'
+                : 'border-[var(--pulse-border)] text-[var(--pulse-text-muted)]'
+            }`}
+          >
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
             </span>
-            <span>自动刷新中</span>
+            <span>{isRefreshing ? '正在全网探测中' : '自动巡检开启'}</span>
           </div>
 
           {/* Refresh Button */}
@@ -55,13 +61,19 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onRefresh}
             disabled={isRefreshing}
             type="button"
-            className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 text-xs font-medium text-[var(--pulse-text-muted)] transition-all hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] disabled:opacity-50"
-            title="立刻触发全量探活检测"
+            className={`flex h-9 items-center gap-1.5 rounded-full border bg-[var(--pulse-card)] px-3 text-xs font-medium transition-all duration-200 disabled:opacity-75 ${
+              isRefreshing
+                ? 'border-emerald-500/40 text-emerald-400 shadow-xs'
+                : 'border-[var(--pulse-border)] text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)]'
+            }`}
+            title="立刻触发全网节点探活"
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`}
+              className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`}
             />
-            <span className="hidden sm:inline">立即探活</span>
+            <span className="hidden sm:inline">
+              {isRefreshing ? '探测中...' : '立即探活'}
+            </span>
           </button>
 
           {/* Theme Toggle */}
