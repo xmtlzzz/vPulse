@@ -28,3 +28,6 @@ crons = ["*/3 * * * *"]
 [vars]
 SITE_URL = "https://pulse.xmtlz.dev"
 APP_NAME = "vPulse"
+# 告警推送 Webhook 地址 (支持飞书、钉钉、Telegram、Discord，留空则不推送)
+WEBHOOK_URL = ""
+

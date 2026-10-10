@@ -125,8 +125,10 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
         {/* Center: Inline Mini-Heartbeat Bar (The Signature Uptime Kuma Look) */}
         <div className="hidden sm:flex items-center gap-[2.5px] max-w-[220px] md:max-w-[320px] h-5 px-1.5 rounded-md bg-[var(--pulse-bg)]/80 border border-[var(--pulse-border)]/60">
           {inlineSlots.map((beat, idx) => {
-            const barBg =
-              beat.status === 1
+            const isBlank = beat.status === -1
+            const barBg = isBlank
+              ? 'bg-[var(--pulse-border)]/40 hover:bg-[var(--pulse-border)]/70'
+              : beat.status === 1
                 ? 'bg-emerald-500 hover:bg-emerald-400'
                 : beat.status === 2
                   ? 'bg-amber-500 hover:bg-amber-400'
@@ -137,7 +139,11 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 className={`w-[4px] h-3.5 rounded-xs transition-transform hover:scale-125 ${barBg} ${
                   isRefreshing || isProbingThis ? 'opacity-80' : ''
                 }`}
-                title={`${beat.latency_ms} ms · ${formatRelativeTime(beat.timestamp)}`}
+                title={
+                  isBlank
+                    ? '排队等待探活'
+                    : `${beat.latency_ms} ms · ${formatRelativeTime(beat.timestamp)}`
+                }
               />
             )
           })}

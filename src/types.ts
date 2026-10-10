@@ -1,4 +1,4 @@
-export type HealthStatus = 1 | 0 | 2 // 1: UP (正常), 0: DOWN (宕机), 2: DEGRADED (高延迟或非预期状态)
+export type HealthStatus = 1 | 0 | 2 | -1 // 1: UP (正常), 0: DOWN (宕机), 2: DEGRADED (高延迟), -1: EMPTY (空白未探测)
 
 export interface Heartbeat {
   status: HealthStatus

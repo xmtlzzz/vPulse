@@ -30,27 +30,38 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
           className="pointer-events-none absolute -top-12 z-30 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] px-2.5 py-1 text-xs shadow-xl backdrop-blur-md"
           style={{ left: `${Math.max(8, Math.min(92, hoveredBeat.x))}%` }}
         >
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${
-                hoveredBeat.beat.status === 1
-                  ? 'bg-emerald-500'
-                  : hoveredBeat.beat.status === 2
-                    ? 'bg-amber-500'
-                    : 'bg-rose-500'
-              }`}
-            />
-            <span className="font-mono-numeric font-medium text-[var(--pulse-text)]">
-              {hoveredBeat.beat.latency_ms} ms
-            </span>
-            <span className="text-[var(--pulse-text-dim)]">·</span>
-            <span className="text-[var(--pulse-text-muted)]">
-              {formatDateTime(hoveredBeat.beat.timestamp)}
-            </span>
-            <span className="text-[var(--pulse-text-dim)]">
-              ({formatRelativeTime(hoveredBeat.beat.timestamp)})
-            </span>
-          </div>
+          {hoveredBeat.beat.status === -1 ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--pulse-text-dim)]" />
+              <span className="text-[var(--pulse-text-dim)]">等待探活队列</span>
+              <span className="text-[var(--pulse-text-dim)]">·</span>
+              <span className="text-[var(--pulse-text-muted)]">
+                {formatDateTime(hoveredBeat.beat.timestamp)}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  hoveredBeat.beat.status === 1
+                    ? 'bg-emerald-500'
+                    : hoveredBeat.beat.status === 2
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                }`}
+              />
+              <span className="font-mono-numeric font-medium text-[var(--pulse-text)]">
+                {hoveredBeat.beat.latency_ms} ms
+              </span>
+              <span className="text-[var(--pulse-text-dim)]">·</span>
+              <span className="text-[var(--pulse-text-muted)]">
+                {formatDateTime(hoveredBeat.beat.timestamp)}
+              </span>
+              <span className="text-[var(--pulse-text-dim)]">
+                ({formatRelativeTime(hoveredBeat.beat.timestamp)})
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -64,15 +75,18 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
           onMouseLeave={() => setHoveredBeat(null)}
         >
           {slots.map((beat, idx) => {
+            const isBlank = beat.status === -1
             const isUp = beat.status === 1
             const isDegraded = beat.status === 2
             const isLatest = idx === slots.length - 1
 
-            const barColor = isUp
-              ? 'bg-emerald-500 hover:bg-emerald-400'
-              : isDegraded
-                ? 'bg-amber-500 hover:bg-amber-400'
-                : 'bg-rose-500 hover:bg-rose-400'
+            const barColor = isBlank
+              ? 'bg-[var(--pulse-border)]/40 hover:bg-[var(--pulse-border)]/70'
+              : isUp
+                ? 'bg-emerald-500 hover:bg-emerald-400'
+                : isDegraded
+                  ? 'bg-amber-500 hover:bg-amber-400'
+                  : 'bg-rose-500 hover:bg-rose-400'
 
             return (
               <div
@@ -93,7 +107,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
                   }
                 }}
                 className={`heartbeat-capsule flex-1 h-6 cursor-pointer rounded-xs ${barColor} ${
-                  isRefreshing ? 'capsule-refreshing' : isLatest ? 'latest-slot-ping' : ''
+                  isRefreshing ? 'capsule-refreshing' : isLatest && !isBlank ? 'latest-slot-ping' : ''
                 }`}
               />
             )
@@ -105,7 +119,9 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--pulse-text-dim)]">
         <span>60 次探活前 (约 3 小时)</span>
         <span className="font-mono-numeric font-medium text-emerald-500">
-          {uptimePercent.toFixed(2)}% 可用率
+          {slots.some((s) => s.status === -1)
+            ? `从尾部累积中 · ${uptimePercent.toFixed(1)}% 可用率`
+            : `${uptimePercent.toFixed(2)}% 可用率`}
         </span>
         <span>刚刚 (当前状态)</span>
       </div>

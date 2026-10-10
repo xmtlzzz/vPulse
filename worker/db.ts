@@ -130,30 +130,45 @@ export async function fetchMonitorsWithHistory(
       }
     }
 
-    // If heartbeats are fewer than 60, backfill with simulated healthy slots
+    // If heartbeats are fewer than 60:
     if (heartbeats.length < 60) {
-      const baseLatencies: Record<string, number> = {
-        vmaker: 42,
-        vblog: 58,
-        'vblog-api': 24,
-        'github-api': 180,
-      }
-      const base = baseLatencies[monitor.id] || 50
-      const mockSlots = generateMockHeartbeats(monitor.id, base)
+      const isDefault = ['vmaker', 'vblog', 'vblog-api', 'github-api'].includes(monitor.id)
+      const now = Math.floor(Date.now() / 1000)
+      const missingCount = 60 - heartbeats.length
 
-      // Overlay real ones at the end
-      if (heartbeats.length > 0) {
-        const backfilled = mockSlots.slice(0, 60 - heartbeats.length).concat(heartbeats)
-        heartbeats = backfilled
+      if (isDefault && heartbeats.length === 0) {
+        // Cold start demo baseline for default system monitors only
+        const baseLatencies: Record<string, number> = {
+          vmaker: 42,
+          vblog: 58,
+          'vblog-api': 24,
+          'github-api': 180,
+        }
+        heartbeats = generateMockHeartbeats(monitor.id, baseLatencies[monitor.id] || 50)
       } else {
-        heartbeats = mockSlots
+        // Newly added monitors: prefix with blank unprobed slots so real probes push forward from tail!
+        const blankSlots: HeartbeatSummary[] = []
+        for (let i = missingCount; i >= 1; i--) {
+          blankSlots.push({
+            status: -1,
+            latency_ms: 0,
+            timestamp: now - (heartbeats.length + i) * 180,
+            message: '等待探活',
+          })
+        }
+        heartbeats = blankSlots.concat(heartbeats)
       }
 
-      current_latency_ms = heartbeats[heartbeats.length - 1].latency_ms
-      current_status = heartbeats[heartbeats.length - 1].status
-      avg_latency_ms = Math.round(
-        heartbeats.reduce((acc, h) => acc + h.latency_ms, 0) / heartbeats.length
-      )
+      const realSlots = heartbeats.filter((h) => h.status !== -1)
+      if (realSlots.length > 0) {
+        current_latency_ms = realSlots[realSlots.length - 1].latency_ms
+        current_status = realSlots[realSlots.length - 1].status
+        avg_latency_ms = Math.round(
+          realSlots.reduce((acc, h) => acc + h.latency_ms, 0) / realSlots.length
+        )
+        const upCount = realSlots.filter((h) => h.status === 1).length
+        uptime_30d = Math.round((upCount / realSlots.length) * 10000) / 100
+      }
     }
 
     results.push({

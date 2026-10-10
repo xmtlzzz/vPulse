@@ -7,6 +7,7 @@ import { IncidentSection } from './components/IncidentSection'
 import { GlobalNavPill } from './components/GlobalNavPill'
 import { AddMonitorModal } from './components/AddMonitorModal'
 import { useTheme } from './lib/useTheme'
+import { useDynamicFavicon } from './lib/useDynamicFavicon'
 import {
   fetchStatus,
   triggerProbe,
@@ -21,6 +22,9 @@ export function App() {
   const [data, setData] = useState<StatusResponse>(FALLBACK_STATUS)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+
+  // Dynamic Browser Title and Favicon
+  useDynamicFavicon(data.overall, data.monitors)
 
   // View preferences
   const [viewMode, setViewMode] = useState<'compact' | 'cards'>(() => {
@@ -189,7 +193,10 @@ export function App() {
         />
 
         {/* 2. Incidents & Announcements */}
-        <IncidentSection incidents={data.incidents} />
+        <IncidentSection
+          incidents={data.incidents}
+          monitors={data.monitors}
+        />
 
         {/* 3. Search & View Mode Toolbar */}
         <MonitorToolbar

@@ -20,6 +20,30 @@ function generateMockHeartbeats(baseLatency: number): Heartbeat[] {
   return heartbeats
 }
 
+function generateInitialBlankHeartbeats(
+  latestProbe: { status: 1 | 0 | 2; latency_ms: number; timestamp: number; message: string }
+): Heartbeat[] {
+  const heartbeats: Heartbeat[] = []
+  const now = latestProbe.timestamp
+  // 59 unprobed blank slots
+  for (let i = 59; i >= 1; i--) {
+    heartbeats.push({
+      status: -1,
+      latency_ms: 0,
+      timestamp: now - i * 180,
+      message: '等待探活',
+    })
+  }
+  // 1 fresh real probe result at the tail
+  heartbeats.push({
+    status: latestProbe.status,
+    latency_ms: latestProbe.latency_ms,
+    timestamp: latestProbe.timestamp,
+    message: latestProbe.message,
+  })
+  return heartbeats
+}
+
 let devMonitors: Monitor[] = [
   {
     id: 'vmaker',
@@ -182,13 +206,7 @@ export function edgeApiDevPlugin(): Plugin {
 
           // Probe in real-time right now!
           const probeResult = await probeSingleMonitor(monConfig)
-          const heartbeats = generateMockHeartbeats(probeResult.latency_ms)
-          heartbeats[heartbeats.length - 1] = {
-            status: probeResult.status,
-            latency_ms: probeResult.latency_ms,
-            timestamp: probeResult.timestamp,
-            message: probeResult.message,
-          }
+          const heartbeats = generateInitialBlankHeartbeats(probeResult)
 
           const newMonitor: Monitor = {
             ...monConfig,

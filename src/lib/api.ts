@@ -238,6 +238,23 @@ export async function createNewMonitor(
   } catch {
     // Local / Dev Fallback: Create mock monitor in localStorage
     const id = `custom-${Date.now()}`
+    const now = Math.floor(Date.now() / 1000)
+    const initialHeartbeats: Heartbeat[] = []
+    for (let i = 59; i >= 1; i--) {
+      initialHeartbeats.push({
+        status: -1,
+        latency_ms: 0,
+        timestamp: now - i * 180,
+        message: '等待探活',
+      })
+    }
+    initialHeartbeats.push({
+      status: 1,
+      latency_ms: 36,
+      timestamp: now,
+      message: '首轮接入探测成功',
+    })
+
     const newMon: Monitor = {
       id,
       name: data.name,
@@ -253,8 +270,8 @@ export async function createNewMonitor(
       current_latency_ms: 36,
       ssl_days_remaining: 80,
       uptime_30d: 100.0,
-      avg_latency_ms: 35,
-      heartbeats: generateFallbackHeartbeats(35),
+      avg_latency_ms: 36,
+      heartbeats: initialHeartbeats,
     }
 
     const current = getLocalCustomMonitors()

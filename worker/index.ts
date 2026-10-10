@@ -14,6 +14,29 @@ export interface Env {
   SITE_URL?: string
   APP_NAME?: string
   ADMIN_TOKEN?: string
+  WEBHOOK_URL?: string
+}
+
+async function dispatchWebhookAlert(
+  env: Env,
+  alert: { monitor: string; url: string; status: 'DOWN' | 'UP' | 'DEGRADED'; message: string }
+) {
+  if (!env.WEBHOOK_URL) return
+  try {
+    const isDown = alert.status === 'DOWN'
+    await fetch(env.WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        msgtype: 'markdown',
+        text: `${isDown ? '🚨' : '✅'} 【vPulse 状态变动告警】\n项目: ${alert.monitor}\n状态: ${alert.status}\n地址: ${alert.url}\n说明: ${alert.message}`,
+        content: `${isDown ? '🚨' : '✅'} **vPulse 监控状态变动**\n- **项目**: ${alert.monitor}\n- **状态**: **${alert.status}**\n- **地址**: ${alert.url}\n- **说明**: ${alert.message}`,
+        ...alert,
+      }),
+    })
+  } catch (e) {
+    console.warn('[vPulse] Webhook notification failed:', e)
+  }
 }
 
 function jsonResponse(data: unknown, status = 200) {
@@ -42,7 +65,24 @@ export default {
   // ── Scheduled Cron Trigger (Runs probe automatically) ──────────────────────
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const monitors = await getAllMonitors(env.DB)
-    ctx.waitUntil(executeAllProbes(monitors, env.DB))
+    const probePromise = executeAllProbes(monitors, env.DB).then(async (results) => {
+      if (env.WEBHOOK_URL) {
+        for (const r of results) {
+          if (r.status === 0) {
+            const m = monitors.find((item) => item.id === r.monitor_id)
+            if (m) {
+              await dispatchWebhookAlert(env, {
+                monitor: m.name,
+                url: m.url,
+                status: 'DOWN',
+                message: r.message,
+              })
+            }
+          }
+        }
+      }
+    })
+    ctx.waitUntil(probePromise)
   },
 
   // ── HTTP Fetch Handler ─────────────────────────────────────────────────────
