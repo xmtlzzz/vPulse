@@ -18,7 +18,7 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "vpulse-db"
-database_id = "vpulse-db"
+database_id = "70cb6136-5df2-4efc-8228-a3f04e4ee262"
 
 # ── Automated Health Probes (Every 3 minutes) ─────────────────────────────────
 [triggers]

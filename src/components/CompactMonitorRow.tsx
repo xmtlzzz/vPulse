@@ -248,13 +248,27 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
             <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-3">
               <div className="flex items-center justify-between text-xs text-[var(--pulse-text-dim)] mb-1">
                 <span>SSL 证书有效期</span>
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                <ShieldCheck
+                  className={`h-3.5 w-3.5 ${
+                    monitor.ssl_days_remaining > 0 ? 'text-emerald-500' : 'text-[var(--pulse-text-dim)]'
+                  }`}
+                />
               </div>
               <div className="text-base sm:text-lg font-bold font-mono-numeric text-[var(--pulse-text)]">
-                {monitor.ssl_days_remaining} <span className="text-xs font-normal">天</span>
+                {monitor.ssl_days_remaining > 0 ? (
+                  <>
+                    {monitor.ssl_days_remaining} <span className="text-xs font-normal">天</span>
+                  </>
+                ) : (
+                  <span className="text-xs font-normal text-[var(--pulse-text-dim)]">未启用 (HTTP)</span>
+                )}
               </div>
-              <div className="text-[11px] text-emerald-500 mt-0.5">
-                TLS 1.3 安全加密
+              <div className="text-[11px] mt-0.5">
+                {monitor.ssl_days_remaining > 0 ? (
+                  <span className="text-emerald-500">TLS 1.3 安全加密</span>
+                ) : (
+                  <span className="text-[var(--pulse-text-dim)]">明文传输协议</span>
+                )}
               </div>
             </div>
           </div>

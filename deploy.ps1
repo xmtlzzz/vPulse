@@ -45,7 +45,7 @@ if ($InitDb) {
 
 # 4. Deploy Worker + Assets
 Write-Host '[2/3] Deploying vPulse Worker to Cloudflare...' -ForegroundColor Cyan
-npx wrangler deploy
+node node_modules\wrangler\bin\wrangler.js deploy
 if ($LASTEXITCODE -ne 0) {
   Write-Host '[x] Cloudflare deploy failed' -ForegroundColor Red
   exit 1

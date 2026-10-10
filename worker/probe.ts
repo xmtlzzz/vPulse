@@ -123,15 +123,16 @@ export async function probeSingleMonitor(
     message = `High Latency (${latencyMs}ms)`
   }
 
-  return {
-    monitor_id: monitor.id,
-    status,
-    status_code: statusCode,
-    latency_ms: latencyMs,
-    ssl_days_remaining: 85,
-    message,
-    timestamp: now,
-  }
+    const isHttps = monitor.url.toLowerCase().startsWith('https://')
+    return {
+      monitor_id: monitor.id,
+      status,
+      status_code: statusCode,
+      latency_ms: latencyMs,
+      ssl_days_remaining: isHttps ? 85 : 0,
+      message,
+      timestamp: now,
+    }
 }
 
 export async function executeAllProbes(
