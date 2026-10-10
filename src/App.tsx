@@ -48,7 +48,7 @@ export function App() {
     }
   }
 
-  const AUTO_PROBE_INTERVAL = 60 // 60s auto probe cycle
+  const AUTO_PROBE_INTERVAL = 180 // 3 minutes (180s) auto probe cycle
   const [countdown, setCountdown] = useState(AUTO_PROBE_INTERVAL)
   const [isAutoProbeEnabled, setIsAutoProbeEnabled] = useState(true)
 

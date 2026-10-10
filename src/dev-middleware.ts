@@ -172,10 +172,10 @@ export function edgeApiDevPlugin(): Plugin {
         void executeDevProbes()
       }, 1500)
 
-      // 2. Automated continuous background probe every 60s
+      // 2. Automated continuous background probe every 3 minutes (180s)
       const autoProbeTimer = setInterval(() => {
         void executeDevProbes()
-      }, 60000)
+      }, 180000)
 
       server.httpServer?.on('close', () => {
         clearInterval(autoProbeTimer)

@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onToggleAutoProbe || onRefresh}
             title={
               isAutoProbeEnabled
-                ? `自动巡检已开启 · 每 60 秒自动探测 · ${countdown ?? 60}s 后执行下一次探活 (点击可立即探活)`
+                ? `自动巡检已开启 · 每 3 分钟自动探测 · ${Math.floor((countdown ?? 180) / 60)}:${((countdown ?? 180) % 60).toString().padStart(2, '0')} 后执行下一次探活 (内置防抖锁，点击可手动探活)`
                 : '自动巡检已暂停 · 点击开启'
             }
             className={`hidden sm:flex items-center gap-2 rounded-full border bg-[var(--pulse-card)] px-3 py-1.5 text-xs transition-colors duration-200 cursor-pointer ${
@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isRefreshing
                 ? '全网探测执行中...'
                 : isAutoProbeEnabled
-                  ? `自动巡检 · ${countdown ?? 60}s`
+                  ? `自动巡检 · ${Math.floor((countdown ?? 180) / 60)}:${((countdown ?? 180) % 60).toString().padStart(2, '0')}`
                   : '自动巡检暂停'}
             </span>
           </button>

@@ -224,13 +224,50 @@ export default {
       }
     }
 
-    // ── API: /api/probe (Manual Immediate Probe Trigger) ─────────────────────
+    // ── API: /api/probe (Manual Immediate Probe Trigger with Debounce Lock) ─
     if (url.pathname === '/api/probe' && request.method === 'POST') {
+      const force = url.searchParams.get('force') === '1'
+      const now = Math.floor(Date.now() / 1000)
       const targetId = url.searchParams.get('id')
+
       if (targetId) {
         const monitors = await getAllMonitors(env.DB)
         const target = monitors.find((m) => m.id === targetId)
         if (!target) return jsonResponse({ error: 'Monitor not found' }, 404)
+
+        // Single monitor 30s debounce lock
+        if (!force && env.DB) {
+          try {
+            const latestHb = await env.DB.prepare(
+              `SELECT timestamp, status, latency_ms, message 
+               FROM heartbeats 
+               WHERE monitor_id = ? 
+               ORDER BY timestamp DESC LIMIT 1`
+            )
+              .bind(targetId)
+              .first<{ timestamp: number; status: number; latency_ms: number; message: string }>()
+
+            if (latestHb && now - latestHb.timestamp < 30) {
+              const remaining = 30 - (now - latestHb.timestamp)
+              return jsonResponse({
+                success: true,
+                debounced: true,
+                cooldown_remaining_sec: remaining,
+                message: `该监控项处于防抖保护期（剩余 ${remaining} 秒），已复用当前探活结果`,
+                result: {
+                  monitor_id: targetId,
+                  status: latestHb.status,
+                  latency_ms: latestHb.latency_ms,
+                  timestamp: latestHb.timestamp,
+                  message: latestHb.message,
+                },
+              })
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         const probeResult = await probeSingleMonitor(target)
         if (env.DB) {
           await env.DB.prepare(
@@ -248,13 +285,36 @@ export default {
             )
             .run()
         }
-        return jsonResponse({ success: true, result: probeResult })
+        return jsonResponse({ success: true, debounced: false, result: probeResult })
+      }
+
+      // Fleet-wide 90s debounce lock to prevent concurrent multi-tab hammering
+      const FLEET_DEBOUNCE_COOLDOWN_SEC = 90
+      if (!force && env.DB) {
+        try {
+          const latestRow = await env.DB.prepare(
+            'SELECT MAX(timestamp) as last_ts FROM heartbeats'
+          ).first<{ last_ts: number | null }>()
+
+          if (latestRow?.last_ts && now - latestRow.last_ts < FLEET_DEBOUNCE_COOLDOWN_SEC) {
+            const remaining = FLEET_DEBOUNCE_COOLDOWN_SEC - (now - latestRow.last_ts)
+            return jsonResponse({
+              success: true,
+              debounced: true,
+              cooldown_remaining_sec: remaining,
+              message: `系统处于防抖冷却保护期（剩余 ${remaining} 秒），已复用最新全网心跳`,
+            })
+          }
+        } catch {
+          // ignore
+        }
       }
 
       const monitors = await getAllMonitors(env.DB)
       const probeResults = await executeAllProbes(monitors, env.DB)
       return jsonResponse({
         success: true,
+        debounced: false,
         probed_count: probeResults.length,
         results: probeResults,
       })
