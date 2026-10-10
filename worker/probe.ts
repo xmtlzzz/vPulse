@@ -10,15 +10,13 @@ export interface HeartbeatResult {
   timestamp: number
 }
 
-export async function probeSingleMonitor(
+async function fetchWithTimeout(
   monitor: MonitorConfig
-): Promise<HeartbeatResult> {
+): Promise<{ res: Response; latencyMs: number }> {
   const controller = new AbortController()
   const timeoutMs = monitor.timeout_ms || 8000
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   const startTime = performance.now()
-  const now = Math.floor(Date.now() / 1000)
-
   try {
     const res = await fetch(monitor.url, {
       method: monitor.method || 'GET',
@@ -29,80 +27,110 @@ export async function probeSingleMonitor(
       signal: controller.signal,
       redirect: 'follow',
     })
-
-    const latency = Math.round(performance.now() - startTime)
+    const latencyMs = Math.round(performance.now() - startTime)
+    return { res, latencyMs }
+  } finally {
     clearTimeout(timeoutId)
+  }
+}
 
-    const statusCode = res.status
+export async function probeSingleMonitor(
+  monitor: MonitorConfig
+): Promise<HeartbeatResult> {
+  const now = Math.floor(Date.now() / 1000)
+  let isRetried = false
+  let probeRes: { res: Response; latencyMs: number } | null = null
+  let lastErr: unknown = null
+
+  // 1. First attempt
+  try {
+    probeRes = await fetchWithTimeout(monitor)
     const isExpected =
-      statusCode === monitor.expected_status ||
-      (statusCode >= 200 && statusCode < 300)
-
-    let status: 1 | 0 | 2 = 1
-    let message = 'OK'
-
-    if (!isExpected) {
-      status = 0
-      message = `HTTP ${statusCode}`
-    } else {
-      const contentType = res.headers.get('content-type') || ''
-      if (contentType.includes('application/json')) {
-        try {
-          const body = (await res.json()) as {
-            status?: string
-            error?: string
-            message?: string
-            components?: Record<string, { status?: string; latency_ms?: number }>
-          }
-          if (body?.status === 'DOWN' || body?.status === 'ERROR') {
-            status = 0
-            message = body.error || body.message || 'Storage Down'
-          } else if (body?.status === 'DEGRADED') {
-            status = 2
-            message = body.message || 'Degraded'
-          } else if (body?.components) {
-            const parts = Object.entries(body.components).map(([k, v]) =>
-              v?.latency_ms ? `${k}:${v.latency_ms}ms` : `${k}:${v?.status || 'ok'}`
-            )
-            if (parts.length > 0) message = parts.join(' · ')
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      if (status === 1 && latency > 2500) {
-        status = 2 // Degraded due to high latency
-        message = `High Latency (${latency}ms)`
-      }
-    }
-
-    return {
-      monitor_id: monitor.id,
-      status,
-      status_code: statusCode,
-      latency_ms: latency,
-      ssl_days_remaining: 85, // Estimated/probed TLS duration
-      message,
-      timestamp: now,
-    }
+      probeRes.res.status === monitor.expected_status ||
+      (probeRes.res.status >= 200 && probeRes.res.status < 300)
+    if (!isExpected) throw new Error(`HTTP ${probeRes.res.status}`)
   } catch (err: unknown) {
-    clearTimeout(timeoutId)
-    const latency = Math.round(performance.now() - startTime)
-    const isTimeout = err instanceof Error && err.name === 'AbortError'
+    lastErr = err
+    // 2. Flapping Prevention: Retry after 600ms to avoid transient false-alarm
+    await new Promise((r) => setTimeout(r, 600))
+    try {
+      probeRes = await fetchWithTimeout(monitor)
+      const isExpected =
+        probeRes.res.status === monitor.expected_status ||
+        (probeRes.res.status >= 200 && probeRes.res.status < 300)
+      if (isExpected) {
+        lastErr = null
+        isRetried = true
+      }
+    } catch (retryErr: unknown) {
+      lastErr = retryErr
+    }
+  }
+
+  // If both attempts failed
+  if (lastErr || !probeRes) {
+    const isTimeout = lastErr instanceof Error && lastErr.name === 'AbortError'
     return {
       monitor_id: monitor.id,
       status: 0,
       status_code: isTimeout ? 408 : 503,
-      latency_ms: latency,
+      latency_ms: 0,
       ssl_days_remaining: 0,
       message: isTimeout
-        ? `Timeout after ${timeoutMs}ms`
-        : err instanceof Error
-          ? err.message
+        ? `Timeout after ${monitor.timeout_ms || 8000}ms`
+        : lastErr instanceof Error
+          ? lastErr.message
           : 'Network error',
       timestamp: now,
     }
+  }
+
+  const { res, latencyMs } = probeRes
+  const statusCode = res.status
+  let status: 1 | 0 | 2 = 1
+  let message = isRetried ? 'OK (Retried)' : 'OK'
+
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    try {
+      const body = (await res.json()) as {
+        status?: string
+        error?: string
+        message?: string
+        components?: Record<string, { status?: string; latency_ms?: number }>
+      }
+      if (body?.status === 'DOWN' || body?.status === 'ERROR') {
+        status = 0
+        message = body.error || body.message || 'Storage Down'
+      } else if (body?.status === 'DEGRADED') {
+        status = 2
+        message = body.message || 'Degraded'
+      } else if (body?.components) {
+        const parts = Object.entries(body.components).map(([k, v]) =>
+          v?.latency_ms ? `${k}:${v.latency_ms}ms` : `${k}:${v?.status || 'ok'}`
+        )
+        if (parts.length > 0) message = parts.join(' · ')
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Dynamic latency threshold: 65% of timeout or 2500ms
+  const highLatencyThreshold = Math.max(2500, Math.round((monitor.timeout_ms || 6000) * 0.65))
+  if (status === 1 && latencyMs > highLatencyThreshold) {
+    status = 2 // Degraded due to high latency
+    message = `High Latency (${latencyMs}ms)`
+  }
+
+  return {
+    monitor_id: monitor.id,
+    status,
+    status_code: statusCode,
+    latency_ms: latencyMs,
+    ssl_days_remaining: 85,
+    message,
+    timestamp: now,
   }
 }
 
