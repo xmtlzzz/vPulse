@@ -163,6 +163,15 @@ export async function triggerProbe(): Promise<boolean> {
   }
 }
 
+export async function probeSingleMonitorById(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/probe?id=${encodeURIComponent(id)}`, { method: 'POST' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function createNewMonitor(
   data: {
     name: string

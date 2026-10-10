@@ -166,6 +166,31 @@ export default {
 
     // ── API: /api/probe (Manual Immediate Probe Trigger) ─────────────────────
     if (url.pathname === '/api/probe' && request.method === 'POST') {
+      const targetId = url.searchParams.get('id')
+      if (targetId) {
+        const monitors = await getAllMonitors(env.DB)
+        const target = monitors.find((m) => m.id === targetId)
+        if (!target) return jsonResponse({ error: 'Monitor not found' }, 404)
+        const probeResult = await probeSingleMonitor(target)
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO heartbeats (monitor_id, status, status_code, latency_ms, ssl_days_remaining, message, timestamp)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+            .bind(
+              probeResult.monitor_id,
+              probeResult.status,
+              probeResult.status_code,
+              probeResult.latency_ms,
+              probeResult.ssl_days_remaining,
+              probeResult.message,
+              probeResult.timestamp
+            )
+            .run()
+        }
+        return jsonResponse({ success: true, result: probeResult })
+      }
+
       const monitors = await getAllMonitors(env.DB)
       const probeResults = await executeAllProbes(monitors, env.DB)
       return jsonResponse({

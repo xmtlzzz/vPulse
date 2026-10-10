@@ -214,6 +214,26 @@ export function edgeApiDevPlugin(): Plugin {
 
         // ── POST /api/probe ──────────────────────────────────────────────
         if (path === '/api/probe' && req.method === 'POST') {
+          const targetId = params.get('id')
+          if (targetId) {
+            const target = devMonitors.find((m) => m.id === targetId)
+            if (!target) return sendJson(res, { error: 'Monitor not found' }, 404)
+            const r = await probeSingleMonitor({
+              ...target,
+              method: (target.method as 'GET' | 'HEAD' | 'POST') || 'GET',
+            })
+            target.current_status = r.status
+            target.current_latency_ms = r.latency_ms
+            target.heartbeats.push({
+              status: r.status,
+              latency_ms: r.latency_ms,
+              timestamp: r.timestamp,
+              message: r.message,
+            })
+            if (target.heartbeats.length > 60) target.heartbeats.shift()
+            return sendJson(res, { success: true, monitor: target, result: r })
+          }
+
           const results = await Promise.all(
             devMonitors.map(async (m) => {
               const r = await probeSingleMonitor({

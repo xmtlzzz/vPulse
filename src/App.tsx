@@ -2,11 +2,18 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Header } from './components/Header'
 import { OverallStatusBanner } from './components/OverallStatusBanner'
 import { MonitorGroup } from './components/MonitorGroup'
+import { MonitorToolbar } from './components/MonitorToolbar'
 import { IncidentSection } from './components/IncidentSection'
 import { GlobalNavPill } from './components/GlobalNavPill'
 import { AddMonitorModal } from './components/AddMonitorModal'
 import { useTheme } from './lib/useTheme'
-import { fetchStatus, triggerProbe, FALLBACK_STATUS } from './lib/api'
+import {
+  fetchStatus,
+  triggerProbe,
+  probeSingleMonitorById,
+  deleteMonitorById,
+  FALLBACK_STATUS,
+} from './lib/api'
 import { StatusResponse, Monitor } from './types'
 
 export function App() {
@@ -14,6 +21,28 @@ export function App() {
   const [data, setData] = useState<StatusResponse>(FALLBACK_STATUS)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+
+  // View preferences
+  const [viewMode, setViewMode] = useState<'compact' | 'cards'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('vpulse-view-mode')
+      if (saved === 'cards' || saved === 'compact') return saved
+    }
+    return 'compact'
+  })
+
+  // Set of currently expanded monitor IDs (accordion)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  // Search keyword query
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const handleViewModeChange = (mode: 'compact' | 'cards') => {
+    setViewMode(mode)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vpulse-view-mode', mode)
+    }
+  }
 
   const loadData = useCallback(async () => {
     const res = await fetchStatus()
@@ -44,16 +73,81 @@ export function App() {
     }
   }
 
+  const handleSingleProbe = async (id: string) => {
+    await probeSingleMonitorById(id)
+    await loadData()
+  }
+
+  const handleDeleteMonitor = async (id: string) => {
+    await deleteMonitorById(id)
+    // Remove from expanded set if deleted
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    await loadData()
+  }
+
+  const handleToggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const handleToggleGroupExpand = (monitorIds: string[]) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      const allExpanded = monitorIds.every((id) => next.has(id))
+      if (allExpanded) {
+        for (const id of monitorIds) next.delete(id)
+      } else {
+        for (const id of monitorIds) next.add(id)
+      }
+      return next
+    })
+  }
+
+  // Filtered monitors based on search
+  const filteredMonitors = useMemo(() => {
+    if (!searchQuery.trim()) return data.monitors
+    const q = searchQuery.toLowerCase().trim()
+    return data.monitors.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.url.toLowerCase().includes(q) ||
+        (m.group_name && m.group_name.toLowerCase().includes(q))
+    )
+  }, [data.monitors, searchQuery])
+
   // Group monitors by group_name
   const groupedMonitors = useMemo(() => {
     const groups: Record<string, Monitor[]> = {}
-    for (const monitor of data.monitors) {
+    for (const monitor of filteredMonitors) {
       const g = monitor.group_name || '其他服务'
       if (!groups[g]) groups[g] = []
       groups[g].push(monitor)
     }
     return groups
-  }, [data.monitors])
+  }, [filteredMonitors])
+
+  const isAllExpanded =
+    filteredMonitors.length > 0 &&
+    filteredMonitors.every((m) => expandedIds.has(m.id))
+
+  const handleToggleAllExpand = () => {
+    if (isAllExpanded) {
+      setExpandedIds(new Set())
+    } else {
+      setExpandedIds(new Set(filteredMonitors.map((m) => m.id)))
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col relative selection:bg-emerald-500 selection:text-black">
@@ -64,7 +158,7 @@ export function App() {
         </div>
       )}
 
-      {/* Ambient background light */}
+      {/* Ambient background glow */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-emerald-500/5 blur-[120px]" />
       </div>
@@ -87,7 +181,7 @@ export function App() {
       />
 
       {/* Main Status Container */}
-      <main className="relative z-10 flex-1 mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 space-y-8 pb-28">
+      <main className="relative z-10 flex-1 mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 space-y-7 pb-28">
         {/* 1. Overall System Status Banner */}
         <OverallStatusBanner
           overall={data.overall}
@@ -97,16 +191,40 @@ export function App() {
         {/* 2. Incidents & Announcements */}
         <IncidentSection incidents={data.incidents} />
 
-        {/* 3. Grouped Monitor Cards */}
-        <div className="space-y-8">
-          {Object.entries(groupedMonitors).map(([groupName, monitors]) => (
-            <MonitorGroup
-              key={groupName}
-              groupName={groupName}
-              monitors={monitors}
-              isRefreshing={isRefreshing}
-            />
-          ))}
+        {/* 3. Search & View Mode Toolbar */}
+        <MonitorToolbar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          isAllExpanded={isAllExpanded}
+          onToggleAllExpand={handleToggleAllExpand}
+          totalCount={data.monitors.length}
+          healthyCount={data.overall.healthy_count}
+        />
+
+        {/* 4. Grouped Monitors (Uptime Kuma compact rows by default) */}
+        <div className="space-y-7">
+          {Object.keys(groupedMonitors).length === 0 ? (
+            <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-8 text-center text-xs text-[var(--pulse-text-dim)]">
+              未找到与 &quot;{searchQuery}&quot; 匹配的监控服务
+            </div>
+          ) : (
+            Object.entries(groupedMonitors).map(([groupName, monitors]) => (
+              <MonitorGroup
+                key={groupName}
+                groupName={groupName}
+                monitors={monitors}
+                isRefreshing={isRefreshing}
+                viewMode={viewMode}
+                expandedIds={expandedIds}
+                onToggleExpand={handleToggleExpand}
+                onToggleGroupExpand={handleToggleGroupExpand}
+                onSingleProbe={handleSingleProbe}
+                onDelete={handleDeleteMonitor}
+              />
+            ))
+          )}
         </div>
 
         {/* Footer */}
