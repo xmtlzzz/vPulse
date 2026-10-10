@@ -19,6 +19,7 @@ interface AddMonitorModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  existingGroups?: string[]
 }
 
 const PRESETS = [
@@ -64,10 +65,26 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  existingGroups,
 }) => {
+  const allAvailableGroups = React.useMemo(() => {
+    const set = new Set<string>()
+    if (existingGroups && existingGroups.length > 0) {
+      for (const g of existingGroups) {
+        if (g && g.trim()) set.add(g.trim())
+      }
+    }
+    set.add('核心站点 (Portals)')
+    set.add('边缘服务与存储 (Edge & Storage)')
+    set.add('外部依赖与第三方 API')
+    return Array.from(set)
+  }, [existingGroups])
+
   const [name, setName] = useState('')
   const [url, setUrl] = useState('https://')
-  const [groupName, setGroupName] = useState('核心站点 (Portals)')
+  const [groupMode, setGroupMode] = useState<'select' | 'custom'>('select')
+  const [selectedGroup, setSelectedGroup] = useState(() => allAvailableGroups[0] || '核心站点 (Portals)')
+  const [customGroup, setCustomGroup] = useState('')
   const [method, setMethod] = useState<'GET' | 'HEAD'>('GET')
   const [expectedStatus, setExpectedStatus] = useState(200)
   const [adminToken, setAdminToken] = useState(() => {
@@ -122,17 +139,28 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
         }
 
         // Auto suggest group
+        let autoGroup: string | null = null
         if (host.includes('workers.dev')) {
-          setGroupName('Cloudflare 边缘计算')
+          autoGroup = 'Cloudflare 边缘计算'
         } else if (
           parsed.pathname.includes('health') ||
           parsed.pathname.includes('probe') ||
           parsed.pathname.includes('kv') ||
           parsed.pathname.includes('d1')
         ) {
-          setGroupName('边缘服务与存储 (Edge & Storage)')
+          autoGroup = '边缘服务与存储 (Edge & Storage)'
         } else if (host.includes('pages.dev')) {
-          setGroupName('核心站点 (Portals)')
+          autoGroup = '核心站点 (Portals)'
+        }
+
+        if (autoGroup) {
+          if (allAvailableGroups.includes(autoGroup)) {
+            setSelectedGroup(autoGroup)
+            setGroupMode('select')
+          } else {
+            setCustomGroup(autoGroup)
+            setGroupMode('custom')
+          }
         }
       }
     } catch {
@@ -141,7 +169,13 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   }
 
   const handleApplyPreset = (preset: (typeof PRESETS)[0]) => {
-    setGroupName(preset.group)
+    if (allAvailableGroups.includes(preset.group)) {
+      setSelectedGroup(preset.group)
+      setGroupMode('select')
+    } else {
+      setCustomGroup(preset.group)
+      setGroupMode('custom')
+    }
     setName(preset.name)
     setUrl(preset.url)
     setMethod(preset.method)
@@ -210,12 +244,17 @@ if (url.pathname === '/api/health') {
       localStorage.setItem('vpulse-admin-token', adminToken)
     }
 
+    const finalGroupName =
+      groupMode === 'custom'
+        ? customGroup.trim() || '自定义服务'
+        : selectedGroup.trim() || '核心站点 (Portals)'
+
     try {
       const res = await createNewMonitor(
         {
           name: name.trim(),
           url: url.trim(),
-          group_name: groupName.trim() || '自定义服务',
+          group_name: finalGroupName,
           method,
           expected_status: expectedStatus,
         },
@@ -404,46 +443,152 @@ if (url.pathname === '/api/health') {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
-                所属分类分组
+          {/* Category / Group selection & Custom entry */}
+          <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-emerald-500" />
+                所属分类分组 *
               </label>
-              <input
-                type="text"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="核心站点 / 边缘服务 / 外部依赖"
-                className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] focus:border-emerald-500 focus:outline-none"
-              />
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setGroupMode('select')}
+                  className={`transition-colors ${
+                    groupMode === 'select'
+                      ? 'text-emerald-400 font-medium'
+                      : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text-muted)]'
+                  }`}
+                >
+                  从已有分类选择
+                </button>
+                <span className="text-[var(--pulse-border)]">|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGroupMode('custom')
+                    if (!customGroup && selectedGroup) setCustomGroup('')
+                  }}
+                  className={`transition-colors ${
+                    groupMode === 'custom'
+                      ? 'text-emerald-400 font-medium'
+                      : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text-muted)]'
+                  }`}
+                >
+                  + 自行添加新分类
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
-                  请求方式
-                </label>
+            {/* Select existing vs Custom input */}
+            {groupMode === 'select' ? (
+              <div className="relative">
                 <select
-                  value={method}
-                  onChange={(e) => setMethod(e.target.value as 'GET' | 'HEAD')}
-                  className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2 py-2 text-xs text-[var(--pulse-text)] focus:border-emerald-500 focus:outline-none"
+                  value={selectedGroup}
+                  onChange={(e) => {
+                    if (e.target.value === '__NEW__') {
+                      setGroupMode('custom')
+                    } else {
+                      setSelectedGroup(e.target.value)
+                    }
+                  }}
+                  className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] pl-3 pr-8 py-2 text-xs text-[var(--pulse-text)] appearance-none focus:border-emerald-500 focus:outline-none cursor-pointer"
                 >
-                  <option value="GET">GET</option>
-                  <option value="HEAD">HEAD</option>
+                  {allAvailableGroups.map((g) => (
+                    <option key={g} value={g} className="bg-[var(--pulse-card)] text-[var(--pulse-text)]">
+                      {g}
+                    </option>
+                  ))}
+                  <option value="__NEW__" className="bg-[var(--pulse-card)] text-emerald-400 font-medium">
+                    ➕ 自行添加新分类...
+                  </option>
                 </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--pulse-text-dim)]" />
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
-                  期望状态码
-                </label>
+            ) : (
+              <div className="relative flex items-center">
                 <input
-                  type="number"
-                  value={expectedStatus}
-                  onChange={(e) => setExpectedStatus(Number(e.target.value))}
-                  className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2 py-2 text-xs text-[var(--pulse-text)] font-mono-numeric focus:border-emerald-500 focus:outline-none"
+                  type="text"
+                  autoFocus
+                  required
+                  value={customGroup}
+                  onChange={(e) => setCustomGroup(e.target.value)}
+                  placeholder="输入自定义分类名称 (例如: 微服务集群 / AI 代理 / 海外节点)"
+                  className="w-full rounded-lg border border-emerald-500/50 bg-[var(--pulse-card)] pl-3 pr-20 py-2 text-xs text-[var(--pulse-text)] placeholder-[var(--pulse-text-dim)] focus:border-emerald-500 focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setGroupMode('select')}
+                  className="absolute right-1.5 rounded-md border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2 py-1 text-[10px] text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text)] transition-colors"
+                >
+                  已有分类
+                </button>
               </div>
+            )}
+
+            {/* Quick category tag pills */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              <span className="text-[10px] text-[var(--pulse-text-dim)] mr-0.5">常用分组:</span>
+              {allAvailableGroups.map((g) => {
+                const isActive = groupMode === 'select' && selectedGroup === g
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => {
+                      setSelectedGroup(g)
+                      setGroupMode('select')
+                    }}
+                    className={`rounded-md px-2 py-0.5 text-[11px] transition-all ${
+                      isActive
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-medium'
+                        : 'border border-[var(--pulse-border)] bg-[var(--pulse-card)] text-[var(--pulse-text-dim)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)]'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => setGroupMode('custom')}
+                className={`rounded-md px-2 py-0.5 text-[11px] border border-dashed transition-all ${
+                  groupMode === 'custom'
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/50 font-medium'
+                    : 'border-[var(--pulse-border)] text-[var(--pulse-text-dim)] hover:text-emerald-400 hover:border-emerald-500/40'
+                }`}
+              >
+                + 自行添加
+              </button>
+            </div>
+          </div>
+
+          {/* Request Method & Expected Status Code */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+                请求方式
+              </label>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value as 'GET' | 'HEAD')}
+                className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] focus:border-emerald-500 focus:outline-none cursor-pointer"
+              >
+                <option value="GET">GET</option>
+                <option value="HEAD">HEAD</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+                期望状态码
+              </label>
+              <input
+                type="number"
+                value={expectedStatus}
+                onChange={(e) => setExpectedStatus(Number(e.target.value))}
+                className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] font-mono-numeric focus:border-emerald-500 focus:outline-none"
+              />
             </div>
           </div>
 

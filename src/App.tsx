@@ -190,6 +190,20 @@ export function App() {
     }
   }
 
+  const existingGroups = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of data.monitors) {
+      if (m.group_name && m.group_name.trim()) {
+        set.add(m.group_name.trim())
+      }
+    }
+    if (set.size === 0) {
+      set.add('核心站点 (Portals)')
+      set.add('边缘服务与存储 (Edge & Storage)')
+    }
+    return Array.from(set)
+  }, [data.monitors])
+
   return (
     <div className="min-h-screen flex flex-col relative selection:bg-emerald-500 selection:text-black">
       {/* Top Refresh Laser Bar during probe */}
@@ -222,6 +236,7 @@ export function App() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={() => handleManualRefresh()}
+        existingGroups={existingGroups}
       />
 
       {/* Main Status Container */}
