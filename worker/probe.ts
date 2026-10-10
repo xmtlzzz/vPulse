@@ -44,9 +44,37 @@ export async function probeSingleMonitor(
     if (!isExpected) {
       status = 0
       message = `HTTP ${statusCode}`
-    } else if (latency > 2500) {
-      status = 2 // Degraded due to high latency
-      message = `High Latency (${latency}ms)`
+    } else {
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        try {
+          const body = (await res.json()) as {
+            status?: string
+            error?: string
+            message?: string
+            components?: Record<string, { status?: string; latency_ms?: number }>
+          }
+          if (body?.status === 'DOWN' || body?.status === 'ERROR') {
+            status = 0
+            message = body.error || body.message || 'Storage Down'
+          } else if (body?.status === 'DEGRADED') {
+            status = 2
+            message = body.message || 'Degraded'
+          } else if (body?.components) {
+            const parts = Object.entries(body.components).map(([k, v]) =>
+              v?.latency_ms ? `${k}:${v.latency_ms}ms` : `${k}:${v?.status || 'ok'}`
+            )
+            if (parts.length > 0) message = parts.join(' · ')
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (status === 1 && latency > 2500) {
+        status = 2 // Degraded due to high latency
+        message = `High Latency (${latency}ms)`
+      }
     }
 
     return {
