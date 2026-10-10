@@ -193,6 +193,9 @@ export async function createNewMonitor(
     if (res.status === 401) {
       return { success: false, error: '需要管理员密钥 (Admin Token)' }
     }
+    if (res.status === 404) {
+      throw new Error('Fallback to localStorage on 404')
+    }
     return { success: false, error: errData.error || '创建失败' }
   } catch {
     // Local / Dev Fallback: Create mock monitor in localStorage
