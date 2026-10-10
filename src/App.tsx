@@ -48,21 +48,16 @@ export function App() {
     }
   }
 
+  const AUTO_PROBE_INTERVAL = 60 // 60s auto probe cycle
+  const [countdown, setCountdown] = useState(AUTO_PROBE_INTERVAL)
+  const [isAutoProbeEnabled, setIsAutoProbeEnabled] = useState(true)
+
   const loadData = useCallback(async () => {
     const res = await fetchStatus()
     setData(res)
   }, [])
 
-  useEffect(() => {
-    void loadData()
-    // Poll every 60 seconds
-    const interval = setInterval(() => {
-      void loadData()
-    }, 60000)
-    return () => clearInterval(interval)
-  }, [loadData])
-
-  const handleManualRefresh = async () => {
+  const executeProbeCycle = useCallback(async () => {
     setIsRefreshing(true)
     const startTime = performance.now()
     try {
@@ -74,7 +69,49 @@ export function App() {
         await new Promise((resolve) => setTimeout(resolve, 600 - elapsed))
       }
       setIsRefreshing(false)
+      setCountdown(AUTO_PROBE_INTERVAL)
     }
+  }, [loadData])
+
+  // Initial load
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
+
+  // Real second-by-second countdown and automatic probe trigger
+  useEffect(() => {
+    if (!isAutoProbeEnabled) return
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          void executeProbeCycle()
+          return AUTO_PROBE_INTERVAL
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [isAutoProbeEnabled, executeProbeCycle])
+
+  // Auto reload when tab gains visibility
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void loadData()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [loadData])
+
+  const handleManualRefresh = () => {
+    void executeProbeCycle()
+  }
+
+  const handleToggleAutoProbe = () => {
+    setIsAutoProbeEnabled((prev) => !prev)
   }
 
   const handleSingleProbe = async (id: string) => {
@@ -175,6 +212,9 @@ export function App() {
         onRefresh={handleManualRefresh}
         lastUpdated={data.overall.updated_at}
         onOpenAddModal={() => setIsAddModalOpen(true)}
+        countdown={countdown}
+        isAutoProbeEnabled={isAutoProbeEnabled}
+        onToggleAutoProbe={handleToggleAutoProbe}
       />
 
       {/* Add Monitor Dynamic Modal */}

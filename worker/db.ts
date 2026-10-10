@@ -132,7 +132,7 @@ export async function fetchMonitorsWithHistory(
 
     // If heartbeats are fewer than 60:
     if (heartbeats.length < 60) {
-      const isDefault = ['vmaker', 'vblog', 'vblog-api', 'github-api'].includes(monitor.id)
+      const isDefault = ['vmaker', 'vblog', 'vblog-api'].includes(monitor.id)
       const now = Math.floor(Date.now() / 1000)
       const missingCount = 60 - heartbeats.length
 
@@ -142,7 +142,6 @@ export async function fetchMonitorsWithHistory(
           vmaker: 42,
           vblog: 58,
           'vblog-api': 24,
-          'github-api': 180,
         }
         heartbeats = generateMockHeartbeats(monitor.id, baseLatencies[monitor.id] || 50)
       } else {

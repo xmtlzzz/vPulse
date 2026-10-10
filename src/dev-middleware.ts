@@ -99,25 +99,47 @@ let devMonitors: Monitor[] = [
     avg_latency_ms: 20,
     heartbeats: generateMockHeartbeats(20),
   },
-  {
-    id: 'github-api',
-    name: 'GitHub API (xmtlz 档案限额)',
-    group_name: '外部依赖 (External Dependencies)',
-    url: 'https://api.github.com/users/xmtlz',
-    method: 'GET',
-    expected_status: 200,
-    interval_min: 5,
-    timeout_ms: 8000,
-    order_num: 4,
-    enabled: 1,
-    current_status: 1,
-    current_latency_ms: 182,
-    ssl_days_remaining: 120,
-    uptime_30d: 99.95,
-    avg_latency_ms: 175,
-    heartbeats: generateMockHeartbeats(175),
-  },
 ]
+
+let isDevProbing = false
+async function executeDevProbes() {
+  if (isDevProbing) return
+  isDevProbing = true
+  try {
+    for (const m of devMonitors) {
+      if (!m.enabled) continue
+      const r = await probeSingleMonitor({
+        ...m,
+        method: (m.method as 'GET' | 'HEAD' | 'POST') || 'GET',
+      })
+      m.current_status = r.status
+      m.current_latency_ms = r.latency_ms
+      if (r.ssl_days_remaining) {
+        m.ssl_days_remaining = r.ssl_days_remaining
+      }
+      m.heartbeats.push({
+        status: r.status,
+        latency_ms: r.latency_ms,
+        timestamp: r.timestamp,
+        message: r.message,
+      })
+      if (m.heartbeats.length > 60) {
+        m.heartbeats.shift()
+      }
+      const realBeats = m.heartbeats.filter((h) => h.status !== -1)
+      if (realBeats.length > 0) {
+        const upCount = realBeats.filter((h) => h.status === 1).length
+        m.uptime_30d = Math.round((upCount / realBeats.length) * 10000) / 100
+        const totalLat = realBeats.reduce((acc, h) => acc + h.latency_ms, 0)
+        m.avg_latency_ms = Math.round(totalLat / realBeats.length)
+      }
+    }
+  } catch (err) {
+    console.warn('[vPulse Dev] Auto probe error:', err)
+  } finally {
+    isDevProbing = false
+  }
+}
 
 function readBody(req: IncomingMessage): Promise<any> {
   return new Promise((resolve) => {
@@ -145,6 +167,20 @@ export function edgeApiDevPlugin(): Plugin {
   return {
     name: 'vpulse-edge-api-dev-middleware',
     configureServer(server) {
+      // 1. Initial live probe 1.5s after boot
+      setTimeout(() => {
+        void executeDevProbes()
+      }, 1500)
+
+      // 2. Automated continuous background probe every 60s
+      const autoProbeTimer = setInterval(() => {
+        void executeDevProbes()
+      }, 60000)
+
+      server.httpServer?.on('close', () => {
+        clearInterval(autoProbeTimer)
+      })
+
       server.middlewares.use(async (req, res, next) => {
         const urlStr = req.url || ''
         const [path, queryStr] = urlStr.split('?')

@@ -9,6 +9,9 @@ interface HeaderProps {
   onRefresh: () => void
   lastUpdated: number
   onOpenAddModal: () => void
+  countdown?: number
+  isAutoProbeEnabled?: boolean
+  onToggleAutoProbe?: () => void
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +20,9 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   onRefresh,
   onOpenAddModal,
+  countdown,
+  isAutoProbeEnabled = true,
+  onToggleAutoProbe,
 }) => {
   return (
     <header className="border-b border-[var(--pulse-border)] bg-[var(--pulse-bg)]/80 backdrop-blur-md sticky top-0 z-40">
@@ -43,20 +49,33 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Actions */}
         <div className="flex items-center gap-3">
-          {/* Live Indicator Pill */}
-          <div
-            className={`hidden sm:flex items-center gap-2 rounded-full border bg-[var(--pulse-card)] px-3 py-1.5 text-xs transition-colors duration-200 ${
+          {/* Live Indicator Pill with Dynamic Countdown */}
+          <button
+            type="button"
+            onClick={onToggleAutoProbe || onRefresh}
+            title={
+              isAutoProbeEnabled
+                ? `自动巡检已开启 · 每 60 秒自动探测 · ${countdown ?? 60}s 后执行下一次探活 (点击可立即探活)`
+                : '自动巡检已暂停 · 点击开启'
+            }
+            className={`hidden sm:flex items-center gap-2 rounded-full border bg-[var(--pulse-card)] px-3 py-1.5 text-xs transition-colors duration-200 cursor-pointer ${
               isRefreshing
                 ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/5'
-                : 'border-[var(--pulse-border)] text-[var(--pulse-text-muted)]'
+                : 'border-[var(--pulse-border)] text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)]'
             }`}
           >
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
             </span>
-            <span>{isRefreshing ? '正在全网探测中' : '自动巡检开启'}</span>
-          </div>
+            <span>
+              {isRefreshing
+                ? '全网探测执行中...'
+                : isAutoProbeEnabled
+                  ? `自动巡检 · ${countdown ?? 60}s`
+                  : '自动巡检暂停'}
+            </span>
+          </button>
 
           {/* Refresh Button */}
           <button

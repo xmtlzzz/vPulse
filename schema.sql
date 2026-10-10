@@ -47,5 +47,4 @@ INSERT OR IGNORE INTO monitors (id, name, group_name, url, method, expected_stat
 VALUES 
   ('vmaker', 'vMaker 创意作品集', '核心站点', 'https://vmaker.xmtlz.dev', 'GET', 200, 3, 6000, 1, 1, strftime('%s', 'now')),
   ('vblog', 'vBlog 个人独立博客', '核心站点', 'https://vblog.xmtlz.dev', 'GET', 200, 3, 6000, 2, 1, strftime('%s', 'now')),
-  ('vblog-api', 'vBlog D1 边缘接口', '边缘服务与存储', 'https://vblog.xmtlz.dev/api/health', 'GET', 200, 3, 5000, 3, 1, strftime('%s', 'now')),
-  ('github-api', 'GitHub API (xmtlz 档案)', '外部依赖', 'https://api.github.com/users/xmtlz', 'GET', 200, 5, 8000, 4, 1, strftime('%s', 'now'));
+  ('vblog-api', 'vBlog D1 边缘接口', '边缘服务与存储', 'https://vblog.xmtlz.dev/api/health', 'GET', 200, 3, 5000, 3, 1, strftime('%s', 'now'));

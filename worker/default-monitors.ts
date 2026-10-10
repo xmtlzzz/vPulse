@@ -48,16 +48,4 @@ export const DEFAULT_MONITORS: MonitorConfig[] = [
     order_num: 3,
     enabled: 1,
   },
-  {
-    id: 'github-api',
-    name: 'GitHub API (xmtlz 档案限额)',
-    group_name: '外部依赖 (External Dependencies)',
-    url: 'https://api.github.com/users/xmtlz',
-    method: 'GET',
-    expected_status: 200,
-    interval_min: 5,
-    timeout_ms: 8000,
-    order_num: 4,
-    enabled: 1,
-  },
 ]

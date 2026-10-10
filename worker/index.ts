@@ -125,6 +125,26 @@ export default {
       const avgLatency =
         monitors.length > 0 ? Math.round(totalLatency / monitors.length) : 0
 
+      // Edge Lazy Auto-Probe: If newest heartbeat is older than 180s or if requested
+      const now = Math.floor(Date.now() / 1000)
+      let newestTimestamp = 0
+      for (const m of monitors) {
+        for (const hb of m.heartbeats) {
+          if (hb.status !== -1 && hb.timestamp > newestTimestamp) {
+            newestTimestamp = hb.timestamp
+          }
+        }
+      }
+      const isStale = newestTimestamp === 0 || now - newestTimestamp >= 180
+      const forceProbe = url.searchParams.get('probe') === '1'
+
+      if ((isStale || forceProbe) && env.DB) {
+        const probeTask = getAllMonitors(env.DB).then((monConfigs) =>
+          executeAllProbes(monConfigs, env.DB)
+        )
+        ctx.waitUntil(probeTask)
+      }
+
       return jsonResponse({
         success: true,
         overall: {
