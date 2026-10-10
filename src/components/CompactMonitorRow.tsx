@@ -297,9 +297,9 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
           </div>
 
           {/* C. Config Specifications & Action Toolbar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 border-t border-[var(--pulse-border)]">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3 border-t border-[var(--pulse-border)]">
             {/* Target Specs */}
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--pulse-text-dim)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--pulse-text-dim)] min-w-0">
               <span className="rounded bg-[var(--pulse-card)] border border-[var(--pulse-border)] px-2 py-0.5 font-mono text-[var(--pulse-text-muted)]">
                 {monitor.method}
               </span>
@@ -309,43 +309,43 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               <span>·</span>
               <span>超时: <strong className="text-[var(--pulse-text)] font-mono">{monitor.timeout_ms}</strong>ms</span>
               <span>·</span>
-              <span className="font-mono text-[var(--pulse-text-muted)] truncate max-w-[220px]">
+              <span className="font-mono text-[var(--pulse-text-muted)] truncate max-w-[280px] xl:max-w-[420px]" title={monitor.url}>
                 {monitor.url}
               </span>
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Ping Now */}
               <button
                 type="button"
                 onClick={handleSingleProbe}
                 disabled={isProbingThis}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text)] hover:border-emerald-500/40 hover:text-emerald-400 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text)] hover:border-emerald-500/40 hover:text-emerald-400 transition-colors disabled:opacity-50"
                 title="针对该单个站点立即执行一次测速"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${isProbingThis ? 'animate-spin text-emerald-400' : ''}`}
                 />
-                <span>{isProbingThis ? '测速中...' : '即刻测速'}</span>
+                <span className="whitespace-nowrap">{isProbingThis ? '测速中...' : '即刻测速'}</span>
               </button>
 
               {/* Copy URL */}
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] transition-colors"
+                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] transition-colors"
                 title="复制该服务监控地址"
               >
                 {isCopied ? (
                   <>
                     <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">已复制</span>
+                    <span className="text-emerald-400 whitespace-nowrap">已复制</span>
                   </>
                 ) : (
                   <>
                     <Copy className="h-3.5 w-3.5" />
-                    <span>复制地址</span>
+                    <span className="whitespace-nowrap">复制地址</span>
                   </>
                 )}
               </button>
@@ -355,11 +355,11 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 href={monitor.url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] transition-colors"
+                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text-muted)] hover:border-[var(--pulse-border-hover)] hover:text-[var(--pulse-text)] transition-colors"
                 title="在新标签页中访问目标站点"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                <span>直达站点</span>
+                <span className="whitespace-nowrap">直达站点</span>
               </a>
 
               {/* Delete Button */}
@@ -367,7 +367,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                     isConfirmingDelete
                       ? 'border-rose-500/50 bg-rose-500/10 text-rose-400'
                       : 'border-[var(--pulse-border)] bg-[var(--pulse-card)] text-[var(--pulse-text-dim)] hover:border-rose-500/30 hover:text-rose-400'
@@ -375,7 +375,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                   title="删除该监控项"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  <span>{isConfirmingDelete ? '确认删除?' : '删除'}</span>
+                  <span className="whitespace-nowrap">{isConfirmingDelete ? '确认删除?' : '删除'}</span>
                 </button>
               )}
             </div>

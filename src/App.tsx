@@ -208,7 +208,7 @@ export function App() {
       />
 
       {/* Main Status Container */}
-      <main className="relative z-10 flex-1 mx-auto w-full max-w-[1360px] px-4 py-8 sm:px-6 lg:px-8 space-y-7 pb-28">
+      <main className="relative z-10 flex-1 mx-auto w-full max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10 space-y-8 pb-28">
         {(networkError || notice) && (
           <div role={networkError ? 'alert' : 'status'} className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-[var(--pulse-text)]">
             {networkError ? '状态读取失败：' + networkError + (data.monitors.length ? '。已保留最后一次记录，当前状态未知。' : '。当前状态未知，暂无历史记录可展示。') : notice}
@@ -222,7 +222,7 @@ export function App() {
         />
 
         {/* 2. Asymmetric Dual-Column Layout (vMaker Editorial Design) */}
-        <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] 2xl:grid-cols-[440px_minmax(0,1fr)] gap-8 xl:gap-10 items-start">
           {/* Left Column: Incident & Recovery Timeline (Sticky on desktop, matching vMaker commit list) */}
           <aside className={`${hasActiveIncident ? 'order-1' : 'order-2'} lg:order-1 lg:sticky lg:top-24 space-y-4`}>
             <IncidentSection
