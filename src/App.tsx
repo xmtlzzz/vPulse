@@ -4,6 +4,7 @@ import { OverallStatusBanner } from './components/OverallStatusBanner'
 import { MonitorGroup } from './components/MonitorGroup'
 import { IncidentSection } from './components/IncidentSection'
 import { GlobalNavPill } from './components/GlobalNavPill'
+import { AddMonitorModal } from './components/AddMonitorModal'
 import { useTheme } from './lib/useTheme'
 import { fetchStatus, triggerProbe, FALLBACK_STATUS } from './lib/api'
 import { StatusResponse, Monitor } from './types'
@@ -12,6 +13,7 @@ export function App() {
   const { isDark, toggleTheme } = useTheme()
   const [data, setData] = useState<StatusResponse>(FALLBACK_STATUS)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
 
   const loadData = useCallback(async () => {
     const res = await fetchStatus()
@@ -74,6 +76,14 @@ export function App() {
         isRefreshing={isRefreshing}
         onRefresh={handleManualRefresh}
         lastUpdated={data.overall.updated_at}
+        onOpenAddModal={() => setIsAddModalOpen(true)}
+      />
+
+      {/* Add Monitor Dynamic Modal */}
+      <AddMonitorModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => handleManualRefresh()}
       />
 
       {/* Main Status Container */}

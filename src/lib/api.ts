@@ -103,18 +103,54 @@ export const FALLBACK_STATUS: StatusResponse = {
   incidents: [],
 }
 
+const LOCAL_CUSTOM_KEY = 'vpulse-custom-monitors'
+
+function getLocalCustomMonitors(): Monitor[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_CUSTOM_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCustomMonitors(list: Monitor[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(LOCAL_CUSTOM_KEY, JSON.stringify(list))
+}
+
 export async function fetchStatus(): Promise<StatusResponse> {
+  const custom = getLocalCustomMonitors()
   try {
     const res = await fetch('/api/status', {
       headers: { Accept: 'application/json' },
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as StatusResponse
-    if (data && data.success) return data
-    return FALLBACK_STATUS
+    if (data && data.success) {
+      return data
+    }
   } catch (err) {
     console.warn('[vPulse] Using fallback status due to network error:', err)
-    return FALLBACK_STATUS
+  }
+
+  // Merge custom monitors into fallback
+  const mergedMonitors = [...FALLBACK_STATUS.monitors]
+  for (const c of custom) {
+    if (!mergedMonitors.some((m) => m.id === c.id)) {
+      mergedMonitors.push(c)
+    }
+  }
+
+  return {
+    ...FALLBACK_STATUS,
+    monitors: mergedMonitors,
+    overall: {
+      ...FALLBACK_STATUS.overall,
+      monitors_count: mergedMonitors.length,
+      healthy_count: mergedMonitors.filter((m) => m.current_status === 1).length,
+    },
   }
 }
 
@@ -126,3 +162,90 @@ export async function triggerProbe(): Promise<boolean> {
     return false
   }
 }
+
+export async function createNewMonitor(
+  data: {
+    name: string
+    url: string
+    group_name: string
+    method?: string
+    expected_status?: number
+  },
+  token?: string
+): Promise<{ success: boolean; error?: string }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch('/api/monitors', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+    })
+    if (res.ok) {
+      return { success: true }
+    }
+    const errData = (await res.json().catch(() => ({}))) as { error?: string }
+    if (res.status === 401) {
+      return { success: false, error: '需要管理员密钥 (Admin Token)' }
+    }
+    return { success: false, error: errData.error || '创建失败' }
+  } catch {
+    // Local / Dev Fallback: Create mock monitor in localStorage
+    const id = `custom-${Date.now()}`
+    const newMon: Monitor = {
+      id,
+      name: data.name,
+      group_name: data.group_name || '自定义服务',
+      url: data.url,
+      method: data.method || 'GET',
+      expected_status: data.expected_status || 200,
+      interval_min: 3,
+      timeout_ms: 6000,
+      order_num: 99,
+      enabled: 1,
+      current_status: 1,
+      current_latency_ms: 36,
+      ssl_days_remaining: 80,
+      uptime_30d: 100.0,
+      avg_latency_ms: 35,
+      heartbeats: generateFallbackHeartbeats(35),
+    }
+
+    const current = getLocalCustomMonitors()
+    current.push(newMon)
+    saveLocalCustomMonitors(current)
+    return { success: true }
+  }
+}
+
+export async function deleteMonitorById(
+  id: string,
+  token?: string
+): Promise<{ success: boolean; error?: string }> {
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch(`/api/monitors?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (res.ok) return { success: true }
+    if (res.status === 401) return { success: false, error: '权限不足' }
+  } catch {
+    // fallback
+  }
+
+  const current = getLocalCustomMonitors()
+  const filtered = current.filter((m) => m.id !== id)
+  saveLocalCustomMonitors(filtered)
+  return { success: true }
+}
+

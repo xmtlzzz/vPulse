@@ -1,5 +1,5 @@
 import React from 'react'
-import { Activity, RefreshCw } from 'lucide-react'
+import { Activity, RefreshCw, Plus } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 
 interface HeaderProps {
@@ -8,6 +8,7 @@ interface HeaderProps {
   isRefreshing: boolean
   onRefresh: () => void
   lastUpdated: number
+  onOpenAddModal: () => void
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   isRefreshing,
   onRefresh,
+  onOpenAddModal,
 }) => {
   return (
     <header className="border-b border-[var(--pulse-border)] bg-[var(--pulse-bg)]/80 backdrop-blur-md sticky top-0 z-40">
@@ -74,6 +76,17 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">
               {isRefreshing ? '探测中...' : '立即探活'}
             </span>
+          </button>
+
+          {/* Add Monitor Button */}
+          <button
+            onClick={onOpenAddModal}
+            type="button"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 text-xs font-medium text-[var(--pulse-text-muted)] transition-all hover:border-emerald-500/40 hover:text-emerald-400"
+            title="添加新的监控服务项目"
+          >
+            <Plus className="h-3.5 w-3.5 text-emerald-500" />
+            <span className="hidden sm:inline">添加项目</span>
           </button>
 
           {/* Theme Toggle */}

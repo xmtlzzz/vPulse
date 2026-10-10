@@ -181,3 +181,88 @@ export async function fetchIncidents(db?: D1Database): Promise<IncidentRecord[]>
     return []
   }
 }
+
+export async function getAllMonitors(db?: D1Database): Promise<MonitorConfig[]> {
+  if (!db) return DEFAULT_MONITORS
+  try {
+    const rows = await db
+      .prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY order_num ASC, created_at ASC')
+      .all<MonitorConfig>()
+    if (rows.results && rows.results.length > 0) {
+      return rows.results
+    }
+  } catch (err) {
+    console.warn('[vPulse] DB query monitors failed, fallback to defaults:', err)
+  }
+  return DEFAULT_MONITORS
+}
+
+export async function createMonitor(
+  data: {
+    id?: string
+    name: string
+    group_name: string
+    url: string
+    method?: 'GET' | 'HEAD' | 'POST'
+    expected_status?: number
+    interval_min?: number
+    timeout_ms?: number
+  },
+  db?: D1Database
+): Promise<MonitorConfig> {
+  const id =
+    data.id ||
+    data.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') ||
+    `mon-${Date.now()}`
+
+  const monitor: MonitorConfig = {
+    id,
+    name: data.name,
+    group_name: data.group_name || '自定义服务',
+    url: data.url,
+    method: data.method || 'GET',
+    expected_status: data.expected_status || 200,
+    interval_min: data.interval_min || 3,
+    timeout_ms: data.timeout_ms || 6000,
+    order_num: 10,
+    enabled: 1,
+  }
+
+  if (db) {
+    await db
+      .prepare(
+        `INSERT INTO monitors (id, name, group_name, url, method, expected_status, interval_min, timeout_ms, order_num, enabled, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        monitor.id,
+        monitor.name,
+        monitor.group_name,
+        monitor.url,
+        monitor.method,
+        monitor.expected_status,
+        monitor.interval_min,
+        monitor.timeout_ms,
+        monitor.order_num,
+        monitor.enabled,
+        Math.floor(Date.now() / 1000)
+      )
+      .run()
+  }
+
+  return monitor
+}
+
+export async function removeMonitor(id: string, db?: D1Database): Promise<boolean> {
+  if (db) {
+    await db.prepare('DELETE FROM monitors WHERE id = ?').bind(id).run()
+    await db.prepare('DELETE FROM heartbeats WHERE monitor_id = ?').bind(id).run()
+    return true
+  }
+  return false
+}
+
