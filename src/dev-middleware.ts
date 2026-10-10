@@ -198,6 +198,15 @@ export function edgeApiDevPlugin(): Plugin {
           const totalLat = devMonitors.reduce((acc, m) => acc + m.current_latency_ms, 0)
           const avgLat = devMonitors.length > 0 ? Math.round(totalLat / devMonitors.length) : 0
 
+          let newestTimestamp = 0
+          for (const m of devMonitors) {
+            for (const hb of m.heartbeats) {
+              if (hb.status !== -1 && hb.timestamp > newestTimestamp) {
+                newestTimestamp = hb.timestamp
+              }
+            }
+          }
+
           return sendJson(res, {
             success: true,
             overall: {
@@ -206,7 +215,7 @@ export function edgeApiDevPlugin(): Plugin {
               avg_latency_ms: avgLat,
               monitors_count: devMonitors.length,
               healthy_count: devMonitors.filter((m) => m.current_status === 1).length,
-              updated_at: Math.floor(Date.now() / 1000),
+              updated_at: newestTimestamp || Math.floor(Date.now() / 1000),
             },
             monitors: devMonitors,
             incidents: [],

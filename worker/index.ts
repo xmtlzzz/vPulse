@@ -153,7 +153,7 @@ export default {
           avg_latency_ms: avgLatency,
           monitors_count: monitors.length,
           healthy_count: monitors.filter((m) => m.current_status === 1).length,
-          updated_at: Math.floor(Date.now() / 1000),
+          updated_at: newestTimestamp || now,
         },
         monitors,
         incidents,

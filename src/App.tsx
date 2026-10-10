@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Header } from './components/Header'
 import { OverallStatusBanner } from './components/OverallStatusBanner'
 import { MonitorGroup } from './components/MonitorGroup'
@@ -49,51 +49,113 @@ export function App() {
   }
 
   const AUTO_PROBE_INTERVAL = 180 // 3 minutes (180s) auto probe cycle
-  const [countdown, setCountdown] = useState(AUTO_PROBE_INTERVAL)
+  const LAST_PROBE_KEY = 'vpulse-last-probe-time'
+
+  // Helper to compute remaining seconds based on an anchor timestamp
+  const getRemainingSeconds = (anchor: number) => {
+    const now = Math.floor(Date.now() / 1000)
+    const elapsed = now - anchor
+    if (elapsed < 0) return AUTO_PROBE_INTERVAL
+    if (elapsed >= AUTO_PROBE_INTERVAL) return 0
+    return AUTO_PROBE_INTERVAL - elapsed
+  }
+
+  // Anchor of the last probe (persisted in localStorage across refreshes)
+  const [lastProbeAnchor, setLastProbeAnchor] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(LAST_PROBE_KEY)
+      if (saved) {
+        const parsed = parseInt(saved, 10)
+        if (!isNaN(parsed) && parsed > 0) return parsed
+      }
+    }
+    return Math.floor(Date.now() / 1000)
+  })
+
+  // Live countdown remaining seconds
+  const [countdown, setCountdown] = useState<number>(() =>
+    getRemainingSeconds(lastProbeAnchor)
+  )
   const [isAutoProbeEnabled, setIsAutoProbeEnabled] = useState(true)
+  const isProbingRef = useRef(false)
 
   const loadData = useCallback(async () => {
     const res = await fetchStatus()
     setData(res)
+
+    // Calculate real newest timestamp from server
+    let newestHb = res.overall.updated_at || 0
+    if (res.monitors) {
+      for (const m of res.monitors) {
+        if (m.heartbeats) {
+          for (const hb of m.heartbeats) {
+            if (hb.status !== -1 && hb.timestamp > newestHb) {
+              newestHb = hb.timestamp
+            }
+          }
+        }
+      }
+    }
+
+    if (newestHb > 0) {
+      setLastProbeAnchor(newestHb)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LAST_PROBE_KEY, String(newestHb))
+      }
+      const rem = getRemainingSeconds(newestHb)
+      setCountdown(rem)
+    }
   }, [])
 
   const executeProbeCycle = useCallback(async () => {
+    if (isProbingRef.current) return
+    isProbingRef.current = true
     setIsRefreshing(true)
     const startTime = performance.now()
     try {
       await triggerProbe()
       await loadData()
+      const now = Math.floor(Date.now() / 1000)
+      setLastProbeAnchor(now)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LAST_PROBE_KEY, String(now))
+      }
+      setCountdown(AUTO_PROBE_INTERVAL)
     } finally {
       const elapsed = performance.now() - startTime
       if (elapsed < 600) {
         await new Promise((resolve) => setTimeout(resolve, 600 - elapsed))
       }
       setIsRefreshing(false)
-      setCountdown(AUTO_PROBE_INTERVAL)
+      isProbingRef.current = false
     }
   }, [loadData])
 
-  // Initial load
+  // Initial load on mount
   useEffect(() => {
     void loadData()
   }, [loadData])
 
-  // Real second-by-second countdown and automatic probe trigger
+  // Real second-by-second countdown anchored to true time difference
   useEffect(() => {
     if (!isAutoProbeEnabled) return
 
     const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          void executeProbeCycle()
-          return AUTO_PROBE_INTERVAL
-        }
-        return prev - 1
-      })
+      if (isProbingRef.current) return
+
+      const now = Math.floor(Date.now() / 1000)
+      const elapsed = now - lastProbeAnchor
+
+      if (elapsed >= AUTO_PROBE_INTERVAL) {
+        setCountdown(0)
+        void executeProbeCycle()
+      } else {
+        setCountdown(Math.max(0, AUTO_PROBE_INTERVAL - elapsed))
+      }
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [isAutoProbeEnabled, executeProbeCycle])
+  }, [isAutoProbeEnabled, lastProbeAnchor, executeProbeCycle])
 
   // Auto reload when tab gains visibility
   useEffect(() => {
