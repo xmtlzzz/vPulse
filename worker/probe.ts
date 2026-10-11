@@ -6,6 +6,7 @@ export interface HeartbeatResult extends Heartbeat {
   status: 0 | 1 | 2
   ssl_days_remaining: null
   message: string
+  retryable?: boolean
 }
 
 const MAX_JSON_BYTES = 64 * 1024
@@ -33,9 +34,15 @@ export async function boundedJson(response: Response, signal: AbortSignal): Prom
   return JSON.parse(await boundedText(response, signal))
 }
 
-async function boundedText(response: Response, signal: AbortSignal): Promise<string> {
+async function readBody(
+  response: Response,
+  signal: AbortSignal,
+  limit: number,
+  collect: boolean,
+  truncate: boolean
+): Promise<{ text: string; complete: boolean }> {
   const reader = response.body?.getReader()
-  if (!reader) throw new Error('健康接口正文为空')
+  if (!reader) return { text: '', complete: true }
   const chunks: Uint8Array[] = []
   let length = 0
   let rejectAbort: (reason: Error) => void = () => {}
@@ -54,23 +61,41 @@ async function boundedText(response: Response, signal: AbortSignal): Promise<str
       if (signal.aborted) throw new Error('探测超时')
       if (done) break
       length += value.byteLength
-      if (length > MAX_JSON_BYTES) {
-        await reader.cancel()
+      if (length > limit) {
+        if (collect)
+          chunks.push(value.subarray(0, Math.max(0, limit - (length - value.byteLength))))
+        void reader.cancel().catch(() => {})
+        if (truncate)
+          return {
+            text: collect ? new TextDecoder().decode(concat(chunks)) : '',
+            complete: false,
+          }
         throw new Error('健康接口 JSON 超过 64 KiB')
       }
-      chunks.push(value)
+      if (collect) chunks.push(value)
     }
-    const bytes = new Uint8Array(length)
-    let offset = 0
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset)
-      offset += chunk.length
+    return {
+      text: collect ? new TextDecoder().decode(concat(chunks)) : '',
+      complete: true,
     }
-    return new TextDecoder().decode(bytes)
   } finally {
     signal.removeEventListener('abort', onAbort)
     reader.releaseLock()
   }
+}
+
+function concat(chunks: Uint8Array[]): Uint8Array {
+  const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  return bytes
+}
+
+async function boundedText(response: Response, signal: AbortSignal): Promise<string> {
+  return (await readBody(response, signal, MAX_JSON_BYTES, true, false)).text
 }
 
 function jsonHealth(body: unknown): { status: 0 | 1 | 2; message: string } {
@@ -160,6 +185,7 @@ async function attempt(monitor: MonitorConfig): Promise<HeartbeatResult> {
   const timer = setTimeout(() => controller.abort(), timeout)
   let started = performance.now()
   let code: number | null = null
+  let retryable = true
   try {
     if (monitor.method !== 'GET' && monitor.method !== 'HEAD')
       throw new Error('请求方式仅支持 GET / HEAD')
@@ -188,7 +214,30 @@ async function attempt(monitor: MonitorConfig): Promise<HeartbeatResult> {
     if (response.status !== monitor.expected_status) {
       status = 0
       message = `HTTP ${response.status}（期望 ${monitor.expected_status}）`
-      await response.body?.cancel()
+      retryable = !(
+        (response.status >= 400 && response.status < 500 && response.status !== 408) ||
+        response.headers.has('retry-after')
+      )
+      if (response.headers.has('retry-after')) message += '；服务端要求稍后重试（本轮不重试）'
+      if (code === 503 && monitor.method !== 'HEAD') {
+        const prefix = await readBody(response, controller.signal, 4096, true, true)
+        if (
+          /\b(?:error(?:\s+code)?[\s:]*1102|Worker exceeded (?:CPU|resource))/i.test(prefix.text)
+        ) {
+          retryable = false
+          message = 'Cloudflare 1102：Worker CPU/资源超限（本轮不重试）'
+        }
+      } else await response.body?.cancel()
+      console.log(
+        JSON.stringify({
+          event: 'probe_http_failed',
+          monitor_id: monitor.id,
+          status_code: code,
+          cf_ray: response.headers.get('cf-ray'),
+          retryable,
+          message,
+        })
+      )
     } else if (
       monitor.method !== 'HEAD' &&
       (monitor.keyword ||
@@ -219,6 +268,12 @@ async function attempt(monitor: MonitorConfig): Promise<HeartbeatResult> {
         status = health.status
         message = health.message
       }
+    } else if (monitor.method === 'GET') {
+      const body = await readBody(response, controller.signal, 2 * 1024 * 1024, false, true)
+      if (!body.complete) {
+        status = 2
+        message = '正文超过 2 MiB，未确认完整响应'
+      }
     } else {
       await response.body?.cancel()
     }
@@ -229,6 +284,7 @@ async function attempt(monitor: MonitorConfig): Promise<HeartbeatResult> {
       message = `响应偏慢 (${latency}ms)`
     }
     return {
+      retryable,
       monitor_id: monitor.id,
       status,
       status_code: code,
@@ -239,6 +295,7 @@ async function attempt(monitor: MonitorConfig): Promise<HeartbeatResult> {
     }
   } catch (error) {
     return {
+      retryable,
       monitor_id: monitor.id,
       status: 0,
       status_code: code,
@@ -261,8 +318,9 @@ export async function probeSingleMonitor(
 ): Promise<HeartbeatResult> {
   await progress?.('probing')
   const first = await attempt(monitor)
-  if (first.status !== 0) return first
+  if (first.status !== 0 || first.retryable === false) return first
   await progress?.('retrying')
+  await new Promise((resolve) => setTimeout(resolve, 500))
   const second = await attempt(monitor)
   if (second.status !== 0) second.message = `${second.message}（重试后恢复）`
   return second

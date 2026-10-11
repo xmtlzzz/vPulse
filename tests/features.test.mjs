@@ -196,7 +196,8 @@ test('probe response does not wait for webhook and live progress reflects actual
   const r = await Promise.race([
     pending,
     new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('probe waited for webhook')), 500)
+      // Allow the intentional 500ms transient retry delay; the webhook remains blocked.
+      setTimeout(() => reject(new Error('probe waited for webhook')), 1500)
     ),
   ])
   assert.equal(r.status, 200)
