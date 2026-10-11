@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { readPreference, savePreference } from './storage'
 
 export type Theme = 'dark' | 'light'
@@ -12,7 +12,6 @@ export function useTheme() {
     if (stored === 'light' || stored === 'dark') return stored
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-  const transitionTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const root = document.documentElement
@@ -24,25 +23,21 @@ export function useTheme() {
   }, [theme])
 
   const toggleTheme = useCallback(() => {
-    const root = document.documentElement
-    root.classList.add('theme-transitioning')
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+    const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark'
 
-    if (transitionTimerRef.current) {
-      window.clearTimeout(transitionTimerRef.current)
+    // Use native GPU compositor view transitions for butter-smooth 60fps crossfade
+    if (
+      typeof document !== 'undefined' &&
+      'startViewTransition' in document &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      document.startViewTransition(() => {
+        setTheme(nextTheme)
+      })
+    } else {
+      setTheme(nextTheme)
     }
-    transitionTimerRef.current = window.setTimeout(() => {
-      root.classList.remove('theme-transitioning')
-    }, 400)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (transitionTimerRef.current) {
-        window.clearTimeout(transitionTimerRef.current)
-      }
-    }
-  }, [])
+  }, [theme])
 
   return { theme, toggleTheme, isDark: theme === 'dark' }
 }
