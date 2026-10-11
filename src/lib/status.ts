@@ -1,4 +1,5 @@
 import type { Monitor, StatusResponse, OverallStatus } from '../types'
+import { nextScheduledCheck } from './schedule'
 
 export function groupMonitors(monitors: Monitor[]): Map<string, Monitor[]> {
   const groups = new Map<string, Monitor[]>()
@@ -36,7 +37,7 @@ export function overallStatus(monitors: Monitor[]): OverallStatus {
 export function projectFreshness(data: StatusResponse, now: number): StatusResponse {
   if (!data.success) return data
   const monitors = data.monitors.map(m => {
-    const expired = m.last_checked_at === null || now > m.last_checked_at + m.interval_min * 60 + Math.max(60, Math.ceil(m.timeout_ms * 2 / 1000))
+    const expired = m.last_checked_at === null || now > nextScheduledCheck(m.last_checked_at, m.interval_min) + Math.max(60, Math.ceil(m.timeout_ms * 2 / 1000))
     return expired ? { ...m, stale: true, current_status: -1 as const, current_latency_ms: null } : m
   })
   return { ...data, monitors, overall: overallStatus(monitors) }

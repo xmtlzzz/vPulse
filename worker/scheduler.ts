@@ -4,6 +4,7 @@ import { requireDb, getAllMonitors, MAX_MONITORS } from './db'
 import { HttpError } from './validation'
 import { probeSingleMonitor, type HeartbeatResult } from './probe'
 import { flushAlerts, type Alert } from './alerts'
+import { nextScheduledCheck } from '../src/lib/schedule'
 
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 
@@ -95,7 +96,7 @@ export async function runProbes(env: Env, options: { id?: string; force?: boolea
         return { success: true, debounced: true, probed_count: 0, cooldown_remaining_sec: 30 - (now - checked) }
       }
     } else if (options.scheduled) {
-      monitors = configs.filter(m => now - (lastById.get(m.id) ?? 0) >= m.interval_min * 60)
+      monitors = configs.filter(m => !lastById.has(m.id) || now >= nextScheduledCheck(lastById.get(m.id)!, m.interval_min))
     } else if (!options.force) {
       const fleet = await db.prepare("SELECT finished_at FROM probe_runs WHERE key='fleet'").first<{ finished_at: number }>()
       if (fleet && now - fleet.finished_at < 90) return { success: true, debounced: true, probed_count: 0, cooldown_remaining_sec: 90 - (now - fleet.finished_at) }

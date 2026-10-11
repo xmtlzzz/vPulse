@@ -1,5 +1,6 @@
 import type { MonitorConfig, Monitor, Heartbeat, Incident } from '../src/types'
 import { HttpError, monitorInput } from './validation'
+import { nextScheduledCheck } from '../src/lib/schedule'
 
 export const MAX_MONITORS = 20
 export function requireDb(db?: D1Database): D1Database {
@@ -52,14 +53,14 @@ export async function fetchMonitorsWithHistory(db?: D1Database): Promise<Monitor
       LEAD(h.timestamp,1,?) OVER (PARTITION BY h.monitor_id ORDER BY h.timestamp,h.id) AS next_ts
     FROM heartbeats h JOIN monitors m ON m.id=h.monitor_id WHERE m.enabled=1 AND h.timestamp>=?
   ), durations AS (
-    SELECT monitor_id,status,MAX(0,MIN(next_ts,timestamp+interval_min*60+MAX(60,timeout_ms*2/1000),?)-MAX(timestamp,?)) AS seconds FROM intervals
+    SELECT monitor_id,status,MAX(0,MIN(next_ts,(CAST(timestamp/180 AS INTEGER)+CAST((interval_min+2)/3 AS INTEGER))*180+MAX(60,timeout_ms*2/1000),?)-MAX(timestamp,?)) AS seconds FROM intervals
   ) SELECT monitor_id,SUM(seconds) AS covered,SUM(CASE WHEN status IN (1,2) THEN seconds ELSE 0 END) AS available
     FROM durations GROUP BY monitor_id`).bind(now, cutoff - 7200, now, cutoff).all<{ monitor_id: string; covered: number; available: number }>()
   const byId = new Map(stats.results.map(s => [s.monitor_id, s]))
   return monitors.map((m, index) => {
     const heartbeats = histories[index].results.reverse()
     const latest = heartbeats.at(-1)
-    const next = latest ? latest.timestamp + m.interval_min * 60 : null
+    const next = latest ? nextScheduledCheck(latest.timestamp, m.interval_min) : null
     const stale = !latest || now > next! + Math.max(60, Math.ceil(m.timeout_ms * 2 / 1000))
     const observed = heartbeats.filter(h => h.latency_ms !== null && h.status !== 0)
     const stat = byId.get(m.id)

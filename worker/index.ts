@@ -5,20 +5,11 @@ import { HttpError, monitorInput, readJson } from './validation'
 import { rateLimit, runProbes, storeProbe, withSchedulerLock } from './scheduler'
 import { probeSingleMonitor } from './probe'
 import { flushAlerts } from './alerts'
+import { authorize, rememberDevice } from './auth'
+import { nextScheduledCheck } from '../src/lib/schedule'
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
-}
-
-async function authorize(request: Request, env: Env) {
-  if (!env.ADMIN_TOKEN) throw new HttpError(503, '管理员尚未配置 ADMIN_TOKEN，管理操作已关闭')
-  const match = /^Bearer (\S+)$/i.exec(request.headers.get('Authorization') ?? '')
-  if (!match || match[1].length > 1024) throw new HttpError(401, '需要有效的管理员密钥')
-  // Standard Web Crypto HMAC verification provides constant-time comparison.
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(match[1]))
-  if (!await crypto.subtle.verify('HMAC', key, signature, encoder.encode(env.ADMIN_TOKEN))) throw new HttpError(401, '管理员密钥无效')
 }
 
 async function handle(request: Request, env: Env): Promise<Response> {
@@ -26,10 +17,18 @@ async function handle(request: Request, env: Env): Promise<Response> {
   if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
   const origin = request.headers.get('Origin')
   if (origin && origin !== url.origin && (request.method !== 'GET' || url.searchParams.has('probe'))) throw new HttpError(403, '不允许跨站管理请求')
+  if (request.headers.get('Sec-Fetch-Site') === 'cross-site' && (request.method !== 'GET' || url.searchParams.has('probe'))) throw new HttpError(403, '不允许跨站管理请求')
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { Allow: 'GET, POST, DELETE, OPTIONS' } })
   const isManagement = request.method !== 'GET' || url.searchParams.has('probe')
-  if (isManagement) await authorize(request, env)
+  if (isManagement) await authorize(request, env, (request.method === 'POST' && ['/api/monitors', '/api/session'].includes(url.pathname)) || request.method === 'GET')
   const db = requireDb(env.DB)
+
+  if (url.pathname === '/api/session' && request.method === 'POST') {
+    await rateLimit(db, 'session', 20)
+    const response = json({ success: true })
+    response.headers.set('Set-Cookie', await rememberDevice(request, env))
+    return response
+  }
 
   if (url.pathname === '/api/status' && request.method === 'GET') {
     if (url.searchParams.get('probe') === '1') {
@@ -59,7 +58,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return monitor
     })
     if (!result) throw new HttpError(409, '已有巡检正在执行，请稍后再试')
-    return json({ success: true, monitor: result }, 201)
+    const response = json({ success: true, monitor: result }, 201)
+    response.headers.set('Set-Cookie', await rememberDevice(request, env))
+    return response
   }
   if (url.pathname === '/api/monitors' && request.method === 'DELETE') {
     await rateLimit(db, 'management', 20)
@@ -77,10 +78,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
       FROM monitors m LEFT JOIN heartbeats h ON h.monitor_id=m.id WHERE m.enabled=1 GROUP BY m.id`)
       .all<{ id: string; interval_min: number; timeout_ms: number; last_checked: number | null }>()
     const now = Math.floor(Date.now() / 1000)
-    const stale = rows.results.filter(m => !m.last_checked || now > m.last_checked + m.interval_min * 60 + Math.max(60, m.timeout_ms * 2 / 1000))
+    const stale = rows.results.filter(m => m.last_checked === null || now > nextScheduledCheck(m.last_checked, m.interval_min) + Math.max(60, m.timeout_ms * 2 / 1000))
     return json({ status: stale.length ? 'DEGRADED' : 'UP', service: 'vPulse', components: { d1: { status: 'UP' }, scheduler: { status: stale.length ? 'DEGRADED' : 'UP', stale_count: stale.length } }, timestamp: now }, stale.length ? 503 : 200)
   }
-  const known = ['/api/status', '/api/monitors', '/api/probe', '/api/probe-test', '/api/health']
+  const known = ['/api/status', '/api/monitors', '/api/probe', '/api/probe-test', '/api/health', '/api/session']
   throw new HttpError(known.includes(url.pathname) ? 405 : 404, known.includes(url.pathname) ? '请求方式不支持' : '接口不存在')
 }
 

@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react'
-import { getAdminToken, saveAdminToken } from '../lib/storage'
 import {
   X,
   Plus,
@@ -10,7 +9,7 @@ import {
   Database,
   Layers,
 } from 'lucide-react'
-import { createNewMonitor, testConnectionProbe } from '../lib/api'
+import { confirmAdminSession, createNewMonitor, testConnectionProbe } from '../lib/api'
 
 interface AddMonitorModalProps {
   isOpen: boolean
@@ -97,7 +96,9 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   const [customGroup, setCustomGroup] = useState('')
   const [method, setMethod] = useState<'GET' | 'HEAD'>('GET')
   const [expectedStatus, setExpectedStatus] = useState(200)
-  const [adminToken, setAdminToken] = useState(getAdminToken)
+  const [adminToken, setAdminToken] = useState('')
+  const [isRemembering, setIsRemembering] = useState(false)
+  const [sessionNotice, setSessionNotice] = useState('')
   const dialogRef = useRef<HTMLDialogElement>(null)
   const testSequence = useRef(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -120,6 +121,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
     const dialog = dialogRef.current
     const previousOverflow = document.body.style.overflow
     if (isOpen && dialog && !dialog.open) {
+      setAdminToken('')
+      setErrorMsg('')
+      setSessionNotice('')
+      setTestState(null)
       dialog.showModal()
       dialog.scrollTop = 0
       document.body.style.overflow = 'hidden'
@@ -219,7 +224,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
     const sequence = ++testSequence.current
     setTestState({ loading: true })
 
-    const res = await testConnectionProbe(url.trim(), method, expectedStatus, adminToken)
+    const res = await testConnectionProbe(url.trim(), method, expectedStatus, adminToken || undefined)
     if (sequence !== testSequence.current) return
     if (res.success) {
       setTestState({
@@ -256,8 +261,6 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
     setIsSubmitting(true)
     setErrorMsg('')
 
-    saveAdminToken(adminToken)
-
     const finalGroupName =
       groupMode === 'custom'
         ? customGroup.trim() || '自定义服务'
@@ -276,6 +279,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
       )
 
       if (res.success) {
+        setAdminToken('')
         onSuccess()
         onClose()
       } else {
@@ -614,32 +618,45 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
 
           <div>
             <label htmlFor="monitor-token" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
-              管理密钥（仅当前标签页保存）
+              管理密钥（添加项目时重新确认）
             </label>
             <input
               type="password"
               id="monitor-token"
               value={adminToken}
               onChange={(e) => setAdminToken(e.target.value)}
-              placeholder="输入管理员配置的密钥，测试、添加和删除均需认证"
+              autoComplete="off"
+              placeholder="输入管理员密钥确认添加；已记住的设备可直接探活"
               className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] placeholder-[var(--pulse-text-dim)] focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
-          <button type="button" onClick={() => { setErrorMsg(saveAdminToken(adminToken) ? '管理密钥已更新，仅保存在当前标签页' : '浏览器禁止存储，无法保存密钥；当前添加和测试仍可使用') }} className="text-xs text-emerald-500">仅保存管理密钥</button>
+          <div className="space-y-2 text-xs text-[var(--pulse-text-dim)]">
+            <p>验证后记住此设备 30 天，刷新或重开页面可直接探活。每次添加项目仍需重新输入密钥。</p>
+            <button type="button" disabled={isRemembering || isSubmitting || !adminToken.trim()} onClick={async () => {
+              setIsRemembering(true); setErrorMsg(''); setSessionNotice('')
+              try {
+                await confirmAdminSession(adminToken)
+                setAdminToken('')
+                setSessionNotice('设备已记住，现在可关闭弹窗直接探活；添加项目时请重新输入密钥。')
+              } catch (error) { setErrorMsg(error instanceof Error ? error.message : '验证失败') }
+              finally { setIsRemembering(false) }
+            }} className="text-emerald-500 disabled:opacity-50">{isRemembering ? '正在验证...' : '验证并记住此设备'}</button>
+            {sessionNotice && <p role="status" className="text-emerald-500">{sessionNotice}</p>}
+          </div>
           {/* Footer Actions */}
           <div className="mt-6 flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--pulse-border)]">
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isRemembering}
               className="rounded-lg border border-[var(--pulse-border)] px-4 py-2 text-xs font-medium text-[var(--pulse-text-muted)] hover:bg-white/5 transition-colors"
             >
               取消
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isRemembering}
               className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-medium text-black hover:bg-emerald-400 disabled:opacity-50 transition-colors"
             >
               <Check className="h-3.5 w-3.5" />

@@ -191,6 +191,8 @@ export function App() {
         isDark={isDark}
         onToggleTheme={toggleTheme}
         isRefreshing={isRefreshing}
+        isLoading={isLoading}
+        statusError={!!networkError}
         onRefresh={handleManualRefresh}
         lastUpdated={displayData.overall.updated_at}
         onOpenAddModal={() => setIsAddModalOpen(true)}

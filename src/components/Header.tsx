@@ -6,6 +6,8 @@ interface HeaderProps {
   isDark: boolean
   onToggleTheme: () => void
   isRefreshing: boolean
+  isLoading?: boolean
+  statusError?: boolean
   onRefresh: () => void
   lastUpdated: number | null
   onOpenAddModal: () => void
@@ -18,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   isDark,
   onToggleTheme,
   isRefreshing,
+  isLoading = false,
+  statusError = false,
   onRefresh,
   onOpenAddModal,
   countdown,
@@ -72,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isRefreshing
                 ? '巡检执行中...'
                 : isAutoProbeEnabled
-                  ? countdown == null ? '等待首次巡检' : countdown === 0 ? '等待服务端巡检' : `下次巡检 · ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
+                  ? isLoading ? '正在同步状态...' : statusError ? '状态同步失败' : countdown == null ? '等待首次巡检' : countdown === 0 ? '巡检已到期 · 等待更新' : `下次巡检 · ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
                   : '页面刷新暂停'}
             </span>
           </button>

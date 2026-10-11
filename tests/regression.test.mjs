@@ -183,6 +183,7 @@ test('R03/R06: redirects cannot reach private URLs; oversized JSON is bounded', 
 })
 
 test('R04: single probes do not reset fleet cooldown; Cron respects per-monitor interval', async (t) => {
+  t.mock.method(Date, 'now', () => 1800000180 * 1000)
   const d = database(); t.after(d.close)
   seed(d.sql, { id: 'one', interval_min: 1 }); seed(d.sql, { id: 'ten', interval_min: 10 })
   beat(d.sql, 'one', 1, now() - 120); beat(d.sql, 'ten', 1, now() - 120)
@@ -230,6 +231,7 @@ test('request bodies reject malformed, wrong-type and oversized data', async () 
 })
 
 test('R07: long observation gaps do not produce invented 100% coverage', async (t) => {
+  t.mock.method(Date, 'now', () => 1800000000 * 1000)
   const d = database(); t.after(d.close); seed(d.sql)
   beat(d.sql, 'audit', 1, now() - 86400 * 15); beat(d.sql, 'audit', 0, now() - 180)
   const [monitor] = await dbmod.fetchMonitorsWithHistory(d.db)
@@ -275,17 +277,25 @@ test('R10: provider payloads and failed HTTP delivery are handled explicitly', a
   assert.equal(d.sql.prepare('SELECT COUNT(*) AS n FROM alert_outbox').get().n, 0)
 })
 
-test('R12: saved session token authenticates all management operations', async (t) => {
+test('R12: legacy token is exchanged once; probes use cookies and addition needs explicit confirmation', async (t) => {
   const values = new Map([['vpulse-admin-token', 'stored-token']])
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage })
   t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'sessionStorage', descriptor); else delete globalThis.sessionStorage })
-  const tokens = []; mockNetwork(t, async (_url, init) => { tokens.push(init.headers.get('Authorization')); return Response.json({ success: true, debounced: false, probed_count: 0 }) })
+  const tokens = []; mockNetwork(t, async (url, init) => { tokens.push([url, init.headers.get('Authorization'), init.credentials]); return Response.json({ success: true, debounced: false, probed_count: 0 }) })
   assert.equal((await api.deleteMonitorById('a')).success, true)
-  assert.equal((await api.createNewMonitor({ name: 'a', url: config.url, group_name: 'a' })).success, true)
+  assert.equal(values.has('vpulse-admin-token'), false)
+  assert.equal((await api.createNewMonitor({ name: 'a', url: config.url, group_name: 'a' })).success, false)
+  assert.equal((await api.createNewMonitor({ name: 'a', url: config.url, group_name: 'a' }, 'fresh-token')).success, true)
   await api.triggerProbe(); await api.testConnectionProbe(config.url)
-  assert.deepEqual(tokens, Array(4).fill('Bearer stored-token'))
+  assert.deepEqual(tokens, [
+    ['/api/session', 'Bearer stored-token', 'same-origin'],
+    ['/api/monitors?id=a', null, 'same-origin'],
+    ['/api/monitors', 'Bearer fresh-token', 'same-origin'],
+    ['/api/probe', null, 'same-origin'],
+    ['/api/probe-test', null, 'same-origin'],
+  ])
 })
 
 test('R13/R14: prototype-like group names are safe and countdown keeps server anchors', () => {
@@ -370,7 +380,9 @@ test('a read racing with a probe cannot publish a cache for the older revision',
 })
 
 test('cached status still expires individual observations and refreshes after TTL', async (t) => {
-  const d = database(); t.after(d.close); seed(d.sql); const start = now(); beat(d.sql, 'audit', 1, start - 230)
+  const d = database(); t.after(d.close); seed(d.sql); const slot = 1800000000; const start = slot + 230
+  t.mock.method(Date, 'now', () => start * 1000)
+  beat(d.sql, 'audit', 1, slot + 7)
   assert.equal((await readStatus(d.db)).overall.status, 'operational')
   t.mock.method(Date, 'now', () => (start + 11) * 1000)
   assert.equal((await readStatus(d.db)).overall.status, 'unknown')
