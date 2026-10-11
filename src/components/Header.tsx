@@ -1,5 +1,5 @@
 import React from 'react'
-import { Activity, RefreshCw, Plus } from 'lucide-react'
+import { Activity, RefreshCw, Plus, Settings2 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 
 interface HeaderProps {
@@ -11,6 +11,8 @@ interface HeaderProps {
   onRefresh: () => void
   lastUpdated: number | null
   onOpenAddModal: () => void
+  onOpenManagement: () => void
+  progressLabel?: string
   countdown?: number | null
   isAutoProbeEnabled?: boolean
   onToggleAutoProbe?: () => void
@@ -24,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   statusError = false,
   onRefresh,
   onOpenAddModal,
+  onOpenManagement,
+  progressLabel,
   countdown,
   isAutoProbeEnabled = true,
   onToggleAutoProbe,
@@ -45,9 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
                 Live
               </span>
             </div>
-            <p className="text-xs text-[var(--pulse-text-dim)]">
-              服务健康探针 · 服务端定时巡检
-            </p>
+            <p className="text-xs text-[var(--pulse-text-dim)]">服务健康探针 · 服务端定时巡检</p>
           </div>
         </div>
 
@@ -74,9 +76,17 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
             <span>
               {isRefreshing
-                ? '巡检执行中...'
+                ? progressLabel || '正在提交巡检...'
                 : isAutoProbeEnabled
-                  ? isLoading ? '正在同步状态...' : statusError ? '状态同步失败' : countdown == null ? '等待首次巡检' : countdown === 0 ? '巡检已到期 · 等待更新' : `下次巡检 · ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
+                  ? isLoading
+                    ? '正在同步状态...'
+                    : statusError
+                      ? '状态同步失败'
+                      : countdown == null
+                        ? '等待首次巡检'
+                        : countdown === 0
+                          ? '巡检已到期 · 等待更新'
+                          : `下次巡检 · ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
                   : '页面刷新暂停'}
             </span>
           </button>
@@ -97,9 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw
               className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-emerald-600 dark:text-emerald-400' : ''}`}
             />
-            <span className="hidden sm:inline">
-              {isRefreshing ? '探测中...' : '立即探活'}
-            </span>
+            <span className="hidden sm:inline">{isRefreshing ? '探测中...' : '立即探活'}</span>
           </button>
 
           {/* Add Monitor Button */}
@@ -115,6 +123,15 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* Theme Toggle */}
+          <button
+            type="button"
+            onClick={onOpenManagement}
+            className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--pulse-border)] px-3 text-xs text-[var(--pulse-text-muted)] hover:text-[var(--pulse-text)]"
+            aria-label="打开监控管理"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">管理</span>
+          </button>
           <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
         </div>
       </div>

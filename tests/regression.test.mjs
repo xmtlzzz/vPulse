@@ -113,8 +113,10 @@ test('R10/R15: incidents persist across repeated failures, resolve on recovery, 
   })
   const env = { DB: d.db, ADMIN_TOKEN: 'audit-secret', WEBHOOK_URL: 'https://hooks.example/alert' }
   for (state of ['DOWN', 'DOWN', 'UP']) {
-    const res = await worker.fetch(request('/api/probe?force=1', 'POST'), env, context())
+    const ctx=context()
+    const res = await worker.fetch(request('/api/probe?force=1', 'POST'), env, ctx)
     assert.equal(res.status, 200)
+    await Promise.all(ctx.tasks)
   }
   const incidents = await dbmod.fetchIncidents(d.db)
   assert.equal(incidents.length, 1)

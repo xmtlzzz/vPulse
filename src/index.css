@@ -16,6 +16,20 @@
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
 }
 .monitor-dialog::backdrop { background: rgb(0 0 0 / 60%); backdrop-filter: blur(4px); }
+.management-dialog { width: min(56rem, calc(100vw - 2rem)); }
+.manage-label { display: flex; flex-direction: column; gap: .4rem; font-size: .8rem; color: var(--pulse-text-muted); }
+.manage-input { width: 100%; min-width: 0; border: 1px solid var(--pulse-border); border-radius: .5rem; padding: .6rem .75rem; background: var(--pulse-bg); color: var(--pulse-text); font-size: .85rem; }
+.manage-input:disabled, fieldset:disabled { opacity: .55; }
+.manage-help { font-size: .75rem; line-height: 1.6; color: var(--pulse-text-dim); }
+.manage-section { border: 1px solid var(--pulse-border); border-radius: .7rem; padding: 1rem; }
+.manage-section legend { padding: 0 .35rem; font-size: .8rem; color: var(--pulse-text-muted); }
+.manage-button, .manage-tab { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; border: 1px solid var(--pulse-border); border-radius: .5rem; padding: .5rem .75rem; font-size: .8rem; color: var(--pulse-text-muted); cursor: pointer; white-space: nowrap; }
+.manage-button:hover, .manage-tab:hover { border-color: var(--pulse-border-hover); color: var(--pulse-text); background: var(--pulse-card-hover); }
+.manage-button:disabled { cursor: default; opacity: .5; }
+.manage-button.primary, .manage-tab.is-selected { background: var(--pulse-emerald-bg); border-color: var(--pulse-emerald-border); color: var(--pulse-emerald); }
+.manage-error, .manage-success { padding: .75rem 1rem; border-radius: .5rem; font-size: .8rem; line-height: 1.6; overflow-wrap: anywhere; }
+.manage-error { background: rgb(244 63 94 / 8%); color: var(--pulse-rose); }
+.manage-success { background: var(--pulse-emerald-bg); color: var(--pulse-emerald); }
 :focus-visible { outline: 2px solid var(--pulse-emerald); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

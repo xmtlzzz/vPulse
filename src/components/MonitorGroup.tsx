@@ -1,5 +1,5 @@
 import React from 'react'
-import { Monitor } from '../types'
+import { Monitor, ProbeProgress } from '../types'
 import { MonitorCard } from './MonitorCard'
 import { CompactMonitorRow } from './CompactMonitorRow'
 import { ChevronsUpDown } from 'lucide-react'
@@ -8,7 +8,6 @@ import { formatUptimePercent } from '../lib/format'
 interface MonitorGroupProps {
   groupName: string
   monitors: Monitor[]
-  isRefreshing?: boolean
   viewMode?: 'compact' | 'cards'
   expandedIds: Set<string>
   onToggleExpand: (id: string) => void
@@ -16,12 +15,13 @@ interface MonitorGroupProps {
   onSingleProbe?: (id: string) => Promise<void>
   onDelete?: (id: string) => Promise<void>
   hoveredMonitorId?: string | null
+  progress?: ProbeProgress
+  onManage?: (id: string, tab: 'monitors' | 'history') => void
 }
 
 export const MonitorGroup: React.FC<MonitorGroupProps> = ({
   groupName,
   monitors,
-  isRefreshing = false,
   viewMode = 'compact',
   expandedIds,
   onToggleExpand,
@@ -29,10 +29,17 @@ export const MonitorGroup: React.FC<MonitorGroupProps> = ({
   onSingleProbe,
   onDelete,
   hoveredMonitorId,
+  progress,
+  onManage,
 }) => {
-  const allHealthy = monitors.every((m) => m.current_status === 1)
-  const measured = monitors.filter(m => m.uptime_30d !== null)
-  const avgGroupUptime = measured.length ? measured.reduce((acc, m) => acc + m.uptime_30d!, 0) / measured.length : null
+  const active = monitors.filter(
+    (m) => m.enabled !== 0 && (m.maintenance_until ?? 0) <= Date.now() / 1000
+  )
+  const allHealthy = active.length > 0 && active.every((m) => m.current_status === 1)
+  const measured = monitors.filter((m) => m.uptime_30d !== null)
+  const avgGroupUptime = measured.length
+    ? measured.reduce((acc, m) => acc + m.uptime_30d!, 0) / measured.length
+    : null
 
   const monitorIds = monitors.map((m) => m.id)
   const isAllGroupExpanded = monitorIds.length > 0 && monitorIds.every((id) => expandedIds.has(id))
@@ -70,7 +77,7 @@ export const MonitorGroup: React.FC<MonitorGroupProps> = ({
             </span>
             <span
               className={`inline-block h-2 w-2 rounded-full ${
-                allHealthy ? 'bg-emerald-500' : 'bg-amber-500'
+                !active.length ? 'bg-slate-400' : allHealthy ? 'bg-emerald-500' : 'bg-amber-500'
               }`}
             />
           </div>
@@ -84,12 +91,13 @@ export const MonitorGroup: React.FC<MonitorGroupProps> = ({
             <CompactMonitorRow
               key={monitor.id}
               monitor={monitor}
-              isRefreshing={isRefreshing}
+              stage={progress?.items.find((p) => p.monitor_id === monitor.id)?.stage}
               isExpanded={expandedIds.has(monitor.id)}
               isHighlighted={hoveredMonitorId === monitor.id}
               onToggleExpand={() => onToggleExpand(monitor.id)}
               onSingleProbe={onSingleProbe}
               onDelete={onDelete}
+              onManage={onManage}
             />
           ))}
         </div>
@@ -99,7 +107,8 @@ export const MonitorGroup: React.FC<MonitorGroupProps> = ({
             <MonitorCard
               key={monitor.id}
               monitor={monitor}
-              isRefreshing={isRefreshing}
+              stage={progress?.items.find((p) => p.monitor_id === monitor.id)?.stage}
+              onManage={onManage}
               isHighlighted={hoveredMonitorId === monitor.id}
             />
           ))}

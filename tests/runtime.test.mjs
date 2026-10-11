@@ -32,6 +32,18 @@ test('workerd: probes recover incidents and DNS/webhook redirects are never foll
   }))
   t.after(() => runtime.dispose())
   const db = await runtime.getD1Database('DB')
+  const waitDelivery=async()=>{
+    const deadline=Date.now()+3000
+    while(Date.now()<deadline){
+      if(!await db.prepare("SELECT owner FROM probe_locks WHERE key='alerts'").first()) {
+        // A background task may not have acquired the lease yet.
+        const row=await db.prepare('SELECT COUNT(*) n FROM alert_outbox WHERE attempts=0').first()
+        if(!row.n)return
+      }
+      await new Promise(resolve=>setTimeout(resolve,10))
+    }
+    assert.fail('background delivery did not complete')
+  }
   for (const file of ['schema.sql', ...readdirSync('migrations').sort().map(name => `migrations/${name}`)]) {
     for (const statement of readFileSync(file, 'utf8').replace(/^--.*$/gm, '').split(';').map(s => s.trim()).filter(Boolean)) await db.prepare(statement).run()
   }
@@ -51,6 +63,7 @@ test('workerd: probes recover incidents and DNS/webhook redirects are never foll
   dnsRedirect = true
   const targetCount = targets.length
   await call(`/api/probe?id=${id}&force=1`)
+  await waitDelivery()
   assert.equal(targets.length, targetCount, 'DNS redirects must not reach the target')
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE status!='resolved'").first()).n, 1)
   assert.equal(webhooks.at(-1).status, 'DOWN')
@@ -58,6 +71,7 @@ test('workerd: probes recover incidents and DNS/webhook redirects are never foll
 
   dnsRedirect = false
   await call(`/api/probe?id=${id}&force=1`)
+  await waitDelivery()
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM incidents WHERE status='resolved'").first()).n, 1)
   assert.equal(webhooks.at(-1).status, 'UP')
 
@@ -65,6 +79,7 @@ test('workerd: probes recover incidents and DNS/webhook redirects are never foll
   await db.prepare('INSERT INTO alert_outbox(id,payload,next_attempt_at,created_at) VALUES(?,?,0,?)')
     .bind('redirect-test', JSON.stringify({ monitor: 'Runtime target', url: 'https://target.example/health', status: 'DOWN', message: 'test' }), Math.floor(Date.now() / 1000)).run()
   await call(`/api/probe?id=${id}&force=1`)
+  await waitDelivery()
   assert.equal((await db.prepare('SELECT attempts FROM alert_outbox WHERE id=?').bind('redirect-test').first()).attempts, 1)
   assert.deepEqual(unexpected, [], 'neither DNS nor webhook redirects may be followed')
 })

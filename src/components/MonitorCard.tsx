@@ -1,43 +1,52 @@
 import React from 'react'
 import { ExternalLink, ShieldCheck, ShieldAlert, Zap, Globe } from 'lucide-react'
-import { Monitor } from '../types'
+import { Monitor, ProbeProgress } from '../types'
+import { monitorState } from '../lib/monitorState'
 import { HeartbeatBar } from './HeartbeatBar'
 import { formatLatency } from '../lib/format'
 
 interface MonitorCardProps {
   monitor: Monitor
-  isRefreshing?: boolean
   isHighlighted?: boolean
+  stage?: ProbeProgress['items'][number]['stage']
+  onManage?: (id: string, tab: 'monitors' | 'history') => void
 }
 
 export const MonitorCard: React.FC<MonitorCardProps> = ({
   monitor,
-  isRefreshing = false,
   isHighlighted = false,
+  stage,
+  onManage,
 }) => {
+  const state = monitorState(monitor, stage)
+  const isRefreshing = state.active
   const isUp = monitor.current_status === 1
   const isDegraded = monitor.current_status === 2
   const isUnknown = monitor.current_status === -1
 
   const statusBadge = isUnknown
-    ? { bg: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/25', dot: 'bg-slate-400', label: monitor.stale && monitor.last_checked_at ? '数据已过期' : '等待探测' }
-    : isUp
     ? {
-        bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 border-emerald-500/25',
-        dot: 'bg-emerald-500',
-        label: '运行正常',
+        bg: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/25',
+        dot: 'bg-slate-400',
+        label: monitor.stale && monitor.last_checked_at ? '数据已过期' : '等待探测',
       }
-    : isDegraded
+    : isUp
       ? {
-          bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border-amber-500/25',
-          dot: 'bg-amber-500',
-          label: '服务降级',
+          bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 border-emerald-500/25',
+          dot: 'bg-emerald-500',
+          label: '运行正常',
         }
-      : {
-          bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-500 border-rose-500/25',
-          dot: 'bg-rose-500',
-          label: '无法连通',
-        }
+      : isDegraded
+        ? {
+            bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border-amber-500/25',
+            dot: 'bg-amber-500',
+            label: '服务降级',
+          }
+        : {
+            bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-500 border-rose-500/25',
+            dot: 'bg-rose-500',
+            label: '无法连通',
+          }
 
   return (
     <div
@@ -46,9 +55,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
         isHighlighted
           ? 'border-emerald-500/60 ring-2 ring-emerald-500/30 bg-[var(--pulse-card-hover)] shadow-[0_0_20px_rgba(16,185,129,0.15)]'
           : 'border-[var(--pulse-border)] bg-[var(--pulse-card)] hover:border-[var(--pulse-border-hover)] hover:bg-[var(--pulse-card-hover)]'
-      } ${
-        isRefreshing ? 'card-probing' : ''
-      }`}
+      } ${isRefreshing ? 'card-probing' : ''}`}
     >
       {/* Top Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -82,13 +89,12 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
             <Zap
               className={`h-3 w-3 ${isRefreshing ? 'animate-pulse text-emerald-400' : 'text-emerald-500'}`}
             />
-            <span>
-              {isRefreshing ? '实时测速中' : formatLatency(monitor.current_latency_ms)}
-            </span>
+            <span>{isRefreshing ? '实时测速中' : formatLatency(monitor.current_latency_ms)}</span>
           </div>
 
           {/* Status Badge */}
           <span
+            title={state.title}
             className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${statusBadge.bg}`}
           >
             <span
@@ -96,7 +102,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
                 isRefreshing ? 'animate-ping' : ''
               }`}
             />
-            {isRefreshing ? '检测中' : statusBadge.label}
+            {state.label}
           </span>
         </div>
       </div>
@@ -110,7 +116,17 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
         />
       </div>
 
-      <p className="text-[11px] text-[var(--pulse-text-dim)]">30 天观测覆盖：{monitor.coverage_30d}%</p>
+      <p className="text-[11px] text-[var(--pulse-text-dim)]">
+        30 天观测覆盖：{monitor.coverage_30d}%
+      </p>
+      <div className="flex gap-2 mt-3">
+        <button className="manage-button" onClick={() => onManage?.(monitor.id, 'monitors')}>
+          编辑与维护
+        </button>
+        <button className="manage-button" onClick={() => onManage?.(monitor.id, 'history')}>
+          历史曲线
+        </button>
+      </div>
 
       {/* Footer Meta Row */}
       <div className="mt-3 pt-3 border-t border-[var(--pulse-border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--pulse-text-dim)]">
@@ -134,7 +150,10 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
           </span>
           <span>·</span>
           <span>
-            平均延迟: <strong className="font-mono-numeric font-normal text-[var(--pulse-text)]">{formatLatency(monitor.avg_latency_ms)}</strong>
+            平均延迟:{' '}
+            <strong className="font-mono-numeric font-normal text-[var(--pulse-text)]">
+              {formatLatency(monitor.avg_latency_ms)}
+            </strong>
           </span>
         </div>
       </div>

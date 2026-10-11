@@ -1,15 +1,7 @@
 import React, { useState, useRef } from 'react'
-import {
-  X,
-  Plus,
-  Sparkles,
-  Check,
-  Zap,
-  ChevronDown,
-  Database,
-  Layers,
-} from 'lucide-react'
+import { X, Plus, Sparkles, Check, Zap, ChevronDown, Database, Layers } from 'lucide-react'
 import { confirmAdminSession, createNewMonitor, testConnectionProbe } from '../lib/api'
+import { MonitorFields, defaultAdvanced } from './MonitorFields'
 
 interface AddMonitorModalProps {
   isOpen: boolean
@@ -92,10 +84,13 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   const [name, setName] = useState('')
   const [url, setUrl] = useState('https://')
   const [groupMode, setGroupMode] = useState<'select' | 'custom'>('select')
-  const [selectedGroup, setSelectedGroup] = useState(() => allAvailableGroups[0] || '核心站点 (Portals)')
+  const [selectedGroup, setSelectedGroup] = useState(
+    () => allAvailableGroups[0] || '核心站点 (Portals)'
+  )
   const [customGroup, setCustomGroup] = useState('')
   const [method, setMethod] = useState<'GET' | 'HEAD'>('GET')
   const [expectedStatus, setExpectedStatus] = useState(200)
+  const [advanced, setAdvanced] = useState({ ...defaultAdvanced })
   const [adminToken, setAdminToken] = useState('')
   const [isRemembering, setIsRemembering] = useState(false)
   const [sessionNotice, setSessionNotice] = useState('')
@@ -138,14 +133,21 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
 
   const containKeyboardFocus = (event: React.KeyboardEvent<HTMLDialogElement>) => {
     if (event.key !== 'Tab') return
-    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], textarea:not(:disabled)'))
-      .filter(element => element.getClientRects().length > 0)
-    const first = controls[0], last = controls.at(-1)
-    if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus() }
-    else if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus() }
+    const controls = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], textarea:not(:disabled)'
+      )
+    ).filter((element) => element.getClientRects().length > 0)
+    const first = controls[0],
+      last = controls.at(-1)
+    if (event.shiftKey && document.activeElement === first && last) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last && first) {
+      event.preventDefault()
+      first.focus()
+    }
   }
-
-
 
   // Smart URL parser & auto-categorization
   const handleUrlChange = (newUrl: string) => {
@@ -211,6 +213,8 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
     setName(preset.name)
     setUrl(preset.url)
     setMethod(preset.method)
+    if (preset.method === 'HEAD')
+      setAdvanced((v) => ({ ...v, keyword: '', json_path: '', json_expected: '' }))
     setExpectedStatus(preset.expectedStatus)
     setTestState(null)
   }
@@ -224,7 +228,13 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
     const sequence = ++testSequence.current
     setTestState({ loading: true })
 
-    const res = await testConnectionProbe(url.trim(), method, expectedStatus, adminToken || undefined)
+    const res = await testConnectionProbe(
+      url.trim(),
+      method,
+      expectedStatus,
+      adminToken || undefined,
+      advanced
+    )
     if (sequence !== testSequence.current) return
     if (res.success) {
       setTestState({
@@ -243,8 +253,13 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   }
 
   const handleCopyCode = () => {
-
-    void navigator.clipboard.writeText(HEALTH_EXAMPLE).then(() => { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000) }).catch(() => setErrorMsg('复制失败，请手动选择代码'))
+    void navigator.clipboard
+      .writeText(HEALTH_EXAMPLE)
+      .then(() => {
+        setCopiedCode(true)
+        setTimeout(() => setCopiedCode(false), 2000)
+      })
+      .catch(() => setErrorMsg('复制失败，请手动选择代码'))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -274,6 +289,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
           group_name: finalGroupName,
           method,
           expected_status: expectedStatus,
+          ...advanced,
         },
         adminToken
       )
@@ -291,7 +307,16 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
   }
 
   return (
-    <dialog ref={dialogRef} aria-labelledby="add-monitor-title" onKeyDown={containKeyboardFocus} onCancel={event => { event.preventDefault(); if (!isSubmitting) onClose() }} className="monitor-dialog">
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="add-monitor-title"
+      onKeyDown={containKeyboardFocus}
+      onCancel={(event) => {
+        event.preventDefault()
+        if (!isSubmitting) onClose()
+      }}
+      className="monitor-dialog"
+    >
       <div className="relative w-full rounded-2xl border border-[var(--pulse-border-hover)] bg-[var(--pulse-card)] p-4 sm:p-6 shadow-2xl">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-[var(--pulse-card)] flex items-center justify-between pb-4 border-b border-[var(--pulse-border)]">
@@ -300,7 +325,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
               <Plus className="h-4 w-4" />
             </div>
             <div>
-              <h2 id="add-monitor-title" className="text-base font-semibold text-[var(--pulse-text)]">
+              <h2
+                id="add-monitor-title"
+                className="text-base font-semibold text-[var(--pulse-text)]"
+              >
                 快速添加监控项目
               </h2>
               <p className="text-xs text-[var(--pulse-text-dim)]">
@@ -365,8 +393,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
             <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-[var(--pulse-border)] text-[var(--pulse-text-dim)] animate-in fade-in duration-150">
               <p className="leading-relaxed">
                 <strong className="text-[var(--pulse-text)]">💡 最佳检测机制：</strong>
-                Cloudflare 的 KV 和 D1 属于私有边缘存储，没有公网 HTTP 端口。行业规范是通过业务 Worker 暴露一个轻量级{' '}
-                <code className="text-emerald-400 font-mono">/api/health</code> 深度探针，在内部实测一次真实的读取延迟并返回 JSON。
+                Cloudflare 的 KV 和 D1 属于私有边缘存储，没有公网 HTTP 端口。行业规范是通过业务
+                Worker 暴露一个轻量级{' '}
+                <code className="text-emerald-400 font-mono">/api/health</code>{' '}
+                深度探针，在内部实测一次真实的读取延迟并返回 JSON。
               </p>
               <div className="relative rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-2.5 font-mono text-[11px] text-[var(--pulse-text-muted)] overflow-x-auto">
                 <pre>{HEALTH_EXAMPLE}</pre>
@@ -385,7 +415,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {errorMsg && (
-            <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
+            <div
+              role="alert"
+              className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400"
+            >
               {errorMsg}
             </div>
           )}
@@ -393,7 +426,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
           {/* URL with Live Test Button */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="monitor-url" className="text-xs font-medium text-[var(--pulse-text-muted)]">
+              <label
+                htmlFor="monitor-url"
+                className="text-xs font-medium text-[var(--pulse-text-muted)]"
+              >
                 探活 URL 目标地址 *
               </label>
               <span className="text-[11px] text-[var(--pulse-text-dim)]">
@@ -435,9 +471,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
                     握手成功: HTTP {testState.statusCode} · 响应延迟 {testState.latencyMs} ms
                   </span>
                 ) : (
-                  <span className="text-rose-400">
-                    ✕ 连接异常: {testState.error}
-                  </span>
+                  <span className="text-rose-400">✕ 连接异常: {testState.error}</span>
                 )}
               </div>
             )}
@@ -445,7 +479,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
 
           {/* Service Name */}
           <div>
-            <label htmlFor="monitor-name" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+            <label
+              htmlFor="monitor-name"
+              className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1"
+            >
               服务名称 *
             </label>
             <input
@@ -463,7 +500,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
           {/* Category / Group selection & Custom entry */}
           <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-bg)]/40 p-3.5 space-y-2.5">
             <div className="flex items-center justify-between">
-              <label htmlFor="monitor-group" className="text-xs font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5">
+              <label
+                htmlFor="monitor-group"
+                className="text-xs font-medium text-[var(--pulse-text-muted)] flex items-center gap-1.5"
+              >
                 <Layers className="h-3.5 w-3.5 text-emerald-500" />
                 所属分类分组 *
               </label>
@@ -513,11 +553,18 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
                   className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] pl-3 pr-8 py-2 text-xs text-[var(--pulse-text)] appearance-none focus:border-emerald-500 focus:outline-none cursor-pointer"
                 >
                   {allAvailableGroups.map((g) => (
-                    <option key={g} value={g} className="bg-[var(--pulse-card)] text-[var(--pulse-text)]">
+                    <option
+                      key={g}
+                      value={g}
+                      className="bg-[var(--pulse-card)] text-[var(--pulse-text)]"
+                    >
                       {g}
                     </option>
                   ))}
-                  <option value="__NEW__" className="bg-[var(--pulse-card)] text-emerald-400 font-medium">
+                  <option
+                    value="__NEW__"
+                    className="bg-[var(--pulse-card)] text-emerald-400 font-medium"
+                  >
                     ➕ 自行添加新分类...
                   </option>
                 </select>
@@ -586,13 +633,22 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
           {/* Request Method & Expected Status Code */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="monitor-method" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+              <label
+                htmlFor="monitor-method"
+                className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1"
+              >
                 请求方式
               </label>
               <select
                 id="monitor-method"
                 value={method}
-                onChange={(e) => { testSequence.current++; setTestState(null); setMethod(e.target.value as 'GET' | 'HEAD'); }}
+                onChange={(e) => {
+                  testSequence.current++
+                  setTestState(null)
+                  setMethod(e.target.value as 'GET' | 'HEAD')
+                  if (e.target.value === 'HEAD')
+                    setAdvanced((v) => ({ ...v, keyword: '', json_path: '', json_expected: '' }))
+                }}
                 className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] focus:border-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="GET">GET</option>
@@ -601,7 +657,10 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
             </div>
 
             <div>
-              <label htmlFor="monitor-status" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+              <label
+                htmlFor="monitor-status"
+                className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1"
+              >
                 期望状态码
               </label>
               <input
@@ -610,14 +669,35 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
                 min={200}
                 max={599}
                 value={expectedStatus}
-                onChange={(e) => { testSequence.current++; setTestState(null); setExpectedStatus(Number(e.target.value)); }}
+                onChange={(e) => {
+                  testSequence.current++
+                  setTestState(null)
+                  setExpectedStatus(Number(e.target.value))
+                }}
                 className="w-full rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-3 py-2 text-xs text-[var(--pulse-text)] font-mono-numeric focus:border-emerald-500 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="monitor-token" className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1">
+            <details className="mb-4">
+              <summary className="cursor-pointer text-sm text-[var(--pulse-text-muted)] mb-3">
+                巡检设置、内容断言与告警策略
+              </summary>
+              <MonitorFields
+                value={advanced}
+                method={method}
+                onChange={(value) => {
+                  setAdvanced(value)
+                  testSequence.current++
+                  setTestState(null)
+                }}
+              />
+            </details>
+            <label
+              htmlFor="monitor-token"
+              className="block text-xs font-medium text-[var(--pulse-text-muted)] mb-1"
+            >
               管理密钥（添加项目时重新确认）
             </label>
             <input
@@ -633,16 +713,32 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
 
           <div className="space-y-2 text-xs text-[var(--pulse-text-dim)]">
             <p>验证后记住此设备 30 天，刷新或重开页面可直接探活。每次添加项目仍需重新输入密钥。</p>
-            <button type="button" disabled={isRemembering || isSubmitting || !adminToken.trim()} onClick={async () => {
-              setIsRemembering(true); setErrorMsg(''); setSessionNotice('')
-              try {
-                await confirmAdminSession(adminToken)
-                setAdminToken('')
-                setSessionNotice('设备已记住，现在可关闭弹窗直接探活；添加项目时请重新输入密钥。')
-              } catch (error) { setErrorMsg(error instanceof Error ? error.message : '验证失败') }
-              finally { setIsRemembering(false) }
-            }} className="text-emerald-500 disabled:opacity-50">{isRemembering ? '正在验证...' : '验证并记住此设备'}</button>
-            {sessionNotice && <p role="status" className="text-emerald-500">{sessionNotice}</p>}
+            <button
+              type="button"
+              disabled={isRemembering || isSubmitting || !adminToken.trim()}
+              onClick={async () => {
+                setIsRemembering(true)
+                setErrorMsg('')
+                setSessionNotice('')
+                try {
+                  await confirmAdminSession(adminToken)
+                  setAdminToken('')
+                  setSessionNotice('设备已记住，现在可关闭弹窗直接探活；添加项目时请重新输入密钥。')
+                } catch (error) {
+                  setErrorMsg(error instanceof Error ? error.message : '验证失败')
+                } finally {
+                  setIsRemembering(false)
+                }
+              }}
+              className="text-emerald-500 disabled:opacity-50"
+            >
+              {isRemembering ? '正在验证...' : '验证并记住此设备'}
+            </button>
+            {sessionNotice && (
+              <p role="status" className="text-emerald-500">
+                {sessionNotice}
+              </p>
+            )}
           </div>
           {/* Footer Actions */}
           <div className="mt-6 flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--pulse-border)]">

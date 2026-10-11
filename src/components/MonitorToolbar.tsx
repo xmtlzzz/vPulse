@@ -1,11 +1,5 @@
 import React from 'react'
-import {
-  Search,
-  X,
-  LayoutList,
-  LayoutGrid,
-  ChevronsUpDown,
-} from 'lucide-react'
+import { Search, X, LayoutList, LayoutGrid, ChevronsUpDown } from 'lucide-react'
 
 interface MonitorToolbarProps {
   searchQuery: string
@@ -16,6 +10,7 @@ interface MonitorToolbarProps {
   onToggleAllExpand: () => void
   totalCount: number
   healthyCount: number
+  activeCount?: number
 }
 
 export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
@@ -27,6 +22,7 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
   onToggleAllExpand,
   totalCount,
   healthyCount,
+  activeCount = totalCount,
 }) => {
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-1">
@@ -58,10 +54,19 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
         {/* Count Summary */}
         <div className="text-[11px] text-[var(--pulse-text-dim)] hidden md:block">
           共 <span className="font-mono-numeric text-[var(--pulse-text)]">{totalCount}</span> 项
-          {totalCount === 0 ? <span className="ml-1">· 暂无监控</span> : healthyCount === totalCount ? (
+          {totalCount === 0 ? (
+            <span className="ml-1">· 暂无监控</span>
+          ) : activeCount === 0 ? (
+            <span className="ml-1">· 均已暂停或维护</span>
+          ) : healthyCount === activeCount ? (
             <span className="text-emerald-500 ml-1">· 全部正常</span>
           ) : (
-            <span className="text-amber-500 ml-1">· {healthyCount}/{totalCount} 正常</span>
+            <span className="text-amber-500 ml-1">
+              · {healthyCount}/{activeCount} 正常
+            </span>
+          )}
+          {activeCount > 0 && activeCount < totalCount && (
+            <span> · {totalCount - activeCount} 暂停/维护</span>
           )}
         </div>
 
