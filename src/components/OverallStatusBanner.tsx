@@ -17,29 +17,36 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
   const isUnknown = overall.status === 'unknown'
 
   const statusConfig = isUnknown
-    ? { bgColor: 'bg-slate-500/10', borderColor: 'border-slate-500/30', textColor: 'text-slate-400', title: '监控状态未知', subtitle: '等待真实探测数据，或现有记录已过期', icon: Clock }
+    ? {
+        bgColor: 'bg-slate-500/10 border-slate-300 dark:border-slate-500/30',
+        textColor: 'text-slate-600 dark:text-slate-400',
+        iconBg: 'bg-slate-500/15 dark:bg-white/10',
+        title: '监控状态未知',
+        subtitle: '等待真实探测数据，或现有记录已过期',
+        icon: Clock,
+      }
     : isAllUp
     ? {
-        bgColor: 'bg-emerald-500/10',
-        borderColor: 'border-emerald-500/30',
-        textColor: 'text-emerald-500',
+        bgColor: 'bg-emerald-500/10 border-emerald-500/25 dark:border-emerald-500/30',
+        textColor: 'text-emerald-600 dark:text-emerald-500',
+        iconBg: 'bg-emerald-500/15 dark:bg-white/10',
         title: '全部服务正常运行',
         subtitle: 'All Systems Operational · 当前监控项探测正常',
         icon: CheckCircle2,
       }
     : isDegraded
       ? {
-          bgColor: 'bg-amber-500/10',
-          borderColor: 'border-amber-500/30',
-          textColor: 'text-amber-500',
+          bgColor: 'bg-amber-500/10 border-amber-500/30',
+          textColor: 'text-amber-600 dark:text-amber-500',
+          iconBg: 'bg-amber-500/15 dark:bg-white/10',
           title: '部分服务降级',
           subtitle: 'Partial Degradation · 按配置间隔持续巡检',
           icon: AlertTriangle,
         }
       : {
-          bgColor: 'bg-rose-500/10',
-          borderColor: 'border-rose-500/30',
-          textColor: 'text-rose-500',
+          bgColor: 'bg-rose-500/10 border-rose-500/30',
+          textColor: 'text-rose-600 dark:text-rose-500',
+          iconBg: 'bg-rose-500/15 dark:bg-white/10',
           title: '检测到服务异常中断',
           subtitle: 'Service Outage · 存在探测失败的端点',
           icon: XCircle,
@@ -49,13 +56,13 @@ export const OverallStatusBanner: React.FC<OverallStatusBannerProps> = ({
 
   return (
     <div
-      className={`rounded-2xl border ${statusConfig.borderColor} ${statusConfig.bgColor} p-6 sm:p-7 shadow-xs backdrop-blur-xs transition-all duration-300`}
+      className={`rounded-2xl border ${statusConfig.bgColor} p-6 sm:p-7 shadow-xs backdrop-blur-xs transition-all duration-300`}
     >
       {/* Top Banner Status */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 ${statusConfig.textColor}`}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${statusConfig.iconBg} ${statusConfig.textColor}`}
           >
             <StatusIcon className="h-7 w-7" />
           </div>

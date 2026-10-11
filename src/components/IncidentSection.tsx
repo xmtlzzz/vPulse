@@ -79,7 +79,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
             onClick={() => setFilter('all')}
             className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
               filter === 'all'
-                ? 'bg-white/10 text-[var(--pulse-text)] border border-white/10'
+                ? 'bg-[var(--pulse-border-hover)] text-[var(--pulse-text)] border border-[var(--pulse-border)] font-semibold shadow-xs'
                 : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text-muted)]'
             }`}
           >
@@ -91,8 +91,8 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
               onClick={() => setFilter('unresolved')}
               className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
                 filter === 'unresolved'
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                  : 'text-rose-400/80 hover:text-rose-400'
+                  ? 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30'
+                  : 'text-rose-600/80 dark:text-rose-400/80 hover:text-rose-600 dark:hover:text-rose-400'
               }`}
             >
               故障中 ({activeIncidents.length})
@@ -103,8 +103,8 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
             onClick={() => setFilter('resolved')}
             className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
               filter === 'resolved'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'text-[var(--pulse-text-dim)] hover:text-emerald-400'
+                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                : 'text-[var(--pulse-text-dim)] hover:text-emerald-600 dark:hover:text-emerald-400'
             }`}
           >
             已恢复 ({resolvedIncidents.length})
@@ -119,7 +119,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
             {/* Emerald Node Dot */}
             <span className="absolute -left-[21px] sm:-left-[25px] top-2.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-4 ring-[var(--pulse-card)] shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
             <div className="rounded-xl border border-[var(--pulse-border)]/60 bg-[var(--pulse-card-hover)]/30 p-3 text-xs">
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-400">
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
                 <ShieldCheck className="h-4 w-4" />
                 <span>{uncertain ? '观测平稳 · 暂无故障' : '系统健康 · 过去 30 天无中断'}</span>
               </div>
@@ -179,8 +179,8 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
                     <span
                       className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium font-mono rounded ${
                         isResolved
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse'
                       }`}
                     >
                       {isResolved ? (

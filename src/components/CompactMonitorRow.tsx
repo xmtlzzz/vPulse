@@ -175,8 +175,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
             <Zap
               className={`h-3 w-3 ${
                 isProbingThis || isRefreshing
-                  ? 'animate-spin text-emerald-400'
-                  : 'text-emerald-500/80'
+                  ? 'animate-spin text-emerald-600 dark:text-emerald-400'
+                  : 'text-emerald-600 dark:text-emerald-500/80'
               }`}
             />
             <span>
@@ -277,8 +277,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               </div>
               <div className="text-sm sm:text-base font-bold text-[var(--pulse-text)] mt-0.5">
                 {monitor.url.toLowerCase().startsWith('https://') ? (
-                  <span className="text-emerald-400 flex items-center gap-1.5 font-mono text-xs sm:text-sm">
-                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> 配置为 HTTPS
+                  <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 font-mono text-xs sm:text-sm">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" /> 配置为 HTTPS
                   </span>
                 ) : (
                   <span className="text-[var(--pulse-text-muted)] text-xs sm:text-sm font-mono">
@@ -321,11 +321,11 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                 type="button"
                 onClick={handleSingleProbe}
                 disabled={isProbingThis}
-                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text)] hover:border-emerald-500/40 hover:text-emerald-400 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-card)] px-3 py-1.5 text-xs font-medium text-[var(--pulse-text)] hover:border-emerald-500/40 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-50"
                 title="针对该单个站点立即执行一次测速"
               >
                 <RefreshCw
-                  className={`h-3.5 w-3.5 ${isProbingThis ? 'animate-spin text-emerald-400' : ''}`}
+                  className={`h-3.5 w-3.5 ${isProbingThis ? 'animate-spin text-emerald-600 dark:text-emerald-400' : ''}`}
                 />
                 <span className="whitespace-nowrap">{isProbingThis ? '测速中...' : '即刻测速'}</span>
               </button>
@@ -339,8 +339,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               >
                 {isCopied ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-emerald-400 whitespace-nowrap">已复制</span>
+                    <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-emerald-600 dark:text-emerald-400 whitespace-nowrap">已复制</span>
                   </>
                 ) : (
                   <>
@@ -369,8 +369,8 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
                   onClick={handleDelete}
                   className={`flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                     isConfirmingDelete
-                      ? 'border-rose-500/50 bg-rose-500/10 text-rose-400'
-                      : 'border-[var(--pulse-border)] bg-[var(--pulse-card)] text-[var(--pulse-text-dim)] hover:border-rose-500/30 hover:text-rose-400'
+                      ? 'border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                      : 'border-[var(--pulse-border)] bg-[var(--pulse-card)] text-[var(--pulse-text-dim)] hover:border-rose-500/30 hover:text-rose-600 dark:hover:text-rose-400'
                   }`}
                   title="删除该监控项"
                 >

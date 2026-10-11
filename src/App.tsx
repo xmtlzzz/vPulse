@@ -6,6 +6,7 @@ import { MonitorToolbar } from './components/MonitorToolbar'
 import { IncidentSection } from './components/IncidentSection'
 import { GlobalNavPill } from './components/GlobalNavPill'
 import { AddMonitorModal } from './components/AddMonitorModal'
+import { FloatingNotification } from './components/FloatingNotification'
 import { useTheme } from './lib/useTheme'
 import { useDynamicFavicon } from './lib/useDynamicFavicon'
 import { fetchStatus, triggerProbe, probeSingleMonitorById, deleteMonitorById, EMPTY_STATUS } from './lib/api'
@@ -18,6 +19,7 @@ export function App() {
   const [data, setData] = useState<StatusResponse>(EMPTY_STATUS)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [hasStatusError, setHasStatusError] = useState(false)
   const [networkError, setNetworkError] = useState('')
   const [notice, setNotice] = useState('')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -32,6 +34,29 @@ export function App() {
   const displayData = useMemo(() => projectFreshness(data, clock), [data, clock])
   const countdown = remainingSeconds(displayData.overall.next_check_at, clock)
   useDynamicFavicon(displayData.overall, displayData.monitors)
+
+  const activeNotice = networkError
+    ? '状态读取失败：' +
+      networkError +
+      (data.monitors.length
+        ? '。已保留最后一次记录，当前状态未知。'
+        : '。当前状态未知，暂无历史记录可展示。')
+    : notice
+
+  const handleDismissNotice = useCallback(() => {
+    setNotice('')
+    setNetworkError('')
+  }, [])
+
+  // Auto-dismiss notification after 3.2s
+  useEffect(() => {
+    if (!notice && !networkError) return
+    const timer = window.setTimeout(() => {
+      setNotice('')
+      setNetworkError('')
+    }, 3200)
+    return () => window.clearTimeout(timer)
+  }, [notice, networkError])
 
   const hasActiveIncident = useMemo(
     () => displayData.incidents.some((i) => i.status !== 'resolved'),
@@ -54,10 +79,11 @@ export function App() {
     try {
       const result = await fetchStatus(signal)
       if (sequence !== requestSequence.current || signal?.aborted) return
-      setData(result); setNetworkError('')
+      setData(result); setNetworkError(''); setHasStatusError(false)
     } catch (error) {
       if (sequence !== requestSequence.current || signal?.aborted) return
       setData(markUnavailable)
+      setHasStatusError(true)
       setNetworkError(error instanceof Error ? error.message : '无法读取监控状态')
     } finally {
       if (sequence === requestSequence.current && !signal?.aborted) setIsLoading(false)
@@ -192,7 +218,7 @@ export function App() {
         onToggleTheme={toggleTheme}
         isRefreshing={isRefreshing}
         isLoading={isLoading}
-        statusError={!!networkError}
+        statusError={hasStatusError}
         onRefresh={handleManualRefresh}
         lastUpdated={displayData.overall.updated_at}
         onOpenAddModal={() => setIsAddModalOpen(true)}
@@ -209,13 +235,15 @@ export function App() {
         existingGroups={existingGroups}
       />
 
+      {/* Floating Alert / Status Notification (Zero Layout Shift & Guaranteed Auto-Dismiss) */}
+      <FloatingNotification
+        message={activeNotice}
+        isError={Boolean(networkError)}
+        onDismiss={handleDismissNotice}
+      />
+
       {/* Main Status Container */}
       <main className="relative z-10 flex-1 mx-auto w-full max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10 space-y-8 pb-28">
-        {(networkError || notice) && (
-          <div role={networkError ? 'alert' : 'status'} className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-[var(--pulse-text)]">
-            {networkError ? '状态读取失败：' + networkError + (data.monitors.length ? '。已保留最后一次记录，当前状态未知。' : '。当前状态未知，暂无历史记录可展示。') : notice}
-          </div>
-        )}
 
         {/* 1. Overall System Status Banner (Top Panoramic Health Metrics) */}
         <OverallStatusBanner
@@ -254,7 +282,7 @@ export function App() {
             <div className="space-y-7">
               {groupedMonitors.size === 0 ? (
                 <div className="rounded-xl border border-[var(--pulse-border)] bg-[var(--pulse-card)] p-8 text-center text-xs text-[var(--pulse-text-dim)]">
-                  {isLoading ? '正在读取真实监控状态…' : searchQuery ? '未找到匹配的监控服务' : networkError ? '暂无可用的监控数据' : '尚未添加监控服务'}
+                  {isLoading ? '正在读取真实监控状态…' : searchQuery ? '未找到匹配的监控服务' : (networkError || hasStatusError) ? '暂无可用的监控数据' : '尚未添加监控服务'}
                 </div>
               ) : (
                 Array.from(groupedMonitors).map(([groupName, monitors]) => (

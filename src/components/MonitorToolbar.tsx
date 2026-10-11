@@ -83,9 +83,9 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
           <button
             type="button"
             onClick={() => onViewModeChange('compact')}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer ${
               viewMode === 'compact'
-                ? 'bg-emerald-500/10 text-emerald-400 font-semibold'
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
                 : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text)]'
             }`}
             title="Uptime Kuma 紧凑条目视图 (点击可展开详情)"
@@ -96,9 +96,9 @@ export const MonitorToolbar: React.FC<MonitorToolbarProps> = ({
           <button
             type="button"
             onClick={() => onViewModeChange('cards')}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer ${
               viewMode === 'cards'
-                ? 'bg-emerald-500/10 text-emerald-400 font-semibold'
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
                 : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text)]'
             }`}
             title="传统大卡片视图"

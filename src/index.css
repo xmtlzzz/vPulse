@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 .monitor-dialog {
   width: min(36rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
@@ -7,10 +9,11 @@
   overscroll-behavior: contain;
   margin: auto;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--pulse-border);
   border-radius: 1rem;
   background: var(--pulse-card);
   color: var(--pulse-text);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
 }
 .monitor-dialog::backdrop { background: rgb(0 0 0 / 60%); backdrop-filter: blur(4px); }
 :focus-visible { outline: 2px solid var(--pulse-emerald); outline-offset: 3px; }
@@ -32,29 +35,53 @@
   --pulse-emerald-border: rgba(16, 185, 129, 0.25);
   --pulse-amber: #f59e0b;
   --pulse-rose: #f43f5e;
+  --pulse-toast-bg: rgba(15, 17, 26, 0.95);
+  --pulse-toast-border: rgba(245, 158, 11, 0.4);
+  --pulse-toast-text: #fef3c7;
+  --pulse-toast-icon-bg: rgba(245, 158, 11, 0.16);
+  --pulse-toast-icon: #fbbf24;
 }
 
 html.theme-light {
-  --pulse-bg: #f8f9fa;
+  --pulse-bg: #f5f7fa;
   --pulse-card: #ffffff;
-  --pulse-card-hover: #f3f4f6;
-  --pulse-border: rgba(0, 0, 0, 0.08);
-  --pulse-border-hover: rgba(0, 0, 0, 0.15);
-  --pulse-text: #111827;
-  --pulse-text-muted: #4b5563;
-  --pulse-text-dim: #6b7280;
+  --pulse-card-hover: #f1f4f9;
+  --pulse-border: rgba(15, 23, 42, 0.08);
+  --pulse-border-hover: rgba(15, 23, 42, 0.18);
+  --pulse-text: #0f172a;
+  --pulse-text-muted: #475569;
+  --pulse-text-dim: #64748b;
   --pulse-emerald: #059669;
   --pulse-emerald-bg: rgba(5, 150, 105, 0.08);
   --pulse-emerald-border: rgba(5, 150, 105, 0.25);
   --pulse-amber: #d97706;
   --pulse-rose: #e11d48;
+  --pulse-toast-bg: rgba(255, 255, 255, 0.98);
+  --pulse-toast-border: rgba(217, 119, 6, 0.45);
+  --pulse-toast-text: #78350f;
+  --pulse-toast-icon-bg: rgba(245, 158, 11, 0.14);
+  --pulse-toast-icon: #d97706;
+}
+
+/* ── Global Theme Transition Animation ─────────────────────────────────────── */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 360ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 360ms cubic-bezier(0.4, 0, 0.2, 1),
+              color 360ms cubic-bezier(0.4, 0, 0.2, 1),
+              fill 360ms cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 360ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 360ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition-delay: 0s !important;
 }
 
 body {
   background-color: var(--pulse-bg);
   color: var(--pulse-text);
   font-family: 'Figtree', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: background-color 260ms ease, color 260ms ease;
+  transition: background-color 360ms cubic-bezier(0.4, 0, 0.2, 1), color 360ms cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 100vh;
 }
 

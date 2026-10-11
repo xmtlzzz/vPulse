@@ -314,7 +314,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
             disabled={isSubmitting}
             aria-label="关闭添加监控弹窗"
             type="button"
-            className="rounded-lg p-1.5 text-[var(--pulse-text-muted)] hover:bg-white/5 hover:text-[var(--pulse-text)] transition-colors"
+            className="rounded-lg p-1.5 text-[var(--pulse-text-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--pulse-text)] transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -334,7 +334,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
                 key={p.label}
                 type="button"
                 onClick={() => handleApplyPreset(p)}
-                className="rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2.5 py-2 text-left text-[11px] font-medium text-[var(--pulse-text-muted)] hover:border-emerald-500/40 hover:text-emerald-400 hover:bg-[var(--pulse-card-hover)] transition-all"
+                className="rounded-lg border border-[var(--pulse-border)] bg-[var(--pulse-bg)] px-2.5 py-2 text-left text-[11px] font-medium text-[var(--pulse-text-muted)] hover:border-emerald-500/40 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-[var(--pulse-card-hover)] transition-all cursor-pointer"
                 title={p.hint}
               >
                 {p.label}
@@ -650,7 +650,7 @@ export const AddMonitorModal: React.FC<AddMonitorModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting || isRemembering}
-              className="rounded-lg border border-[var(--pulse-border)] px-4 py-2 text-xs font-medium text-[var(--pulse-text-muted)] hover:bg-white/5 transition-colors"
+              className="rounded-lg border border-[var(--pulse-border)] px-4 py-2 text-xs font-medium text-[var(--pulse-text-muted)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
             >
               取消
             </button>

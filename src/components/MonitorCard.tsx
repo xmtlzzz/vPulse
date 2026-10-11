@@ -20,21 +20,21 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
   const isUnknown = monitor.current_status === -1
 
   const statusBadge = isUnknown
-    ? { bg: 'bg-slate-500/10 text-slate-400 border-slate-500/25', dot: 'bg-slate-400', label: monitor.stale && monitor.last_checked_at ? '数据已过期' : '等待探测' }
+    ? { bg: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/25', dot: 'bg-slate-400', label: monitor.stale && monitor.last_checked_at ? '数据已过期' : '等待探测' }
     : isUp
     ? {
-        bg: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25',
+        bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 border-emerald-500/25',
         dot: 'bg-emerald-500',
         label: '运行正常',
       }
     : isDegraded
       ? {
-          bg: 'bg-amber-500/10 text-amber-500 border-amber-500/25',
+          bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border-amber-500/25',
           dot: 'bg-amber-500',
           label: '服务降级',
         }
       : {
-          bg: 'bg-rose-500/10 text-rose-500 border-rose-500/25',
+          bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-500 border-rose-500/25',
           dot: 'bg-rose-500',
           label: '无法连通',
         }
@@ -117,7 +117,7 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
         <div className="flex items-center gap-1.5">
           {monitor.url.toLowerCase().startsWith('https://') ? (
             <>
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
               <span className="text-[var(--pulse-text-muted)] font-medium">配置为 HTTPS</span>
             </>
           ) : (
