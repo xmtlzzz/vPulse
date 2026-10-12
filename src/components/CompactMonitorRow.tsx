@@ -17,6 +17,7 @@ import {
 import { Monitor, ProbeProgress } from '../types'
 import { monitorState } from '../lib/monitorState'
 import { HeartbeatBar } from './HeartbeatBar'
+import { heartbeatWindow } from '../lib/heartbeat'
 import {
   formatLatency,
   formatDateTime,
@@ -65,8 +66,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
     }
   })()
 
-  // Last 36 slots for compact inline strip
-  const inlineSlots = monitor.heartbeats.slice(-36)
+  const { slots: inlineSlots } = heartbeatWindow(monitor.heartbeats)
 
   // Recent 5 events for detailed event stream in expanded drawer
   const recentEvents = [...monitor.heartbeats].slice(-5).reverse()
@@ -167,7 +167,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
         </div>
 
         {/* Center: Inline Mini-Heartbeat Bar (The Signature Uptime Kuma Look) */}
-        <div className="hidden sm:flex items-center gap-[2.5px] max-w-[220px] md:max-w-[320px] h-5 px-1.5 rounded-md bg-[var(--pulse-bg)]/80 border border-[var(--pulse-border)]/60">
+        <div aria-label="最近 60 次探测，与展开时序一致" className="hidden sm:flex flex-1 min-w-0 items-center gap-[2px] max-w-[220px] md:max-w-[320px] h-5 px-1.5 rounded-md bg-[var(--pulse-bg)]/80 border border-[var(--pulse-border)]/60">
           {inlineSlots.map((beat, idx) => {
             const isBlank = beat.status === -1
             const barBg = isBlank
@@ -180,7 +180,7 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
             return (
               <div
                 key={`inline-${beat.timestamp}-${idx}`}
-                className={`w-[4px] h-3.5 rounded-xs transition-transform hover:scale-125 ${barBg} ${
+                className={`flex-1 min-w-0 h-3.5 rounded-xs transition-transform hover:scale-125 ${barBg} ${
                   isRefreshing || isProbingThis ? 'opacity-80' : ''
                 }`}
                 title={
@@ -252,7 +252,6 @@ export const CompactMonitorRow: React.FC<CompactMonitorRowProps> = ({
               </div>
               <HeartbeatBar
                 heartbeats={monitor.heartbeats}
-                uptimePercent={monitor.uptime_30d}
                 isRefreshing={isRefreshing || isProbingThis}
               />
             </div>

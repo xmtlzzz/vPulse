@@ -111,7 +111,6 @@ export const MonitorCard: React.FC<MonitorCardProps> = ({
       <div className="my-3">
         <HeartbeatBar
           heartbeats={monitor.heartbeats}
-          uptimePercent={monitor.uptime_30d}
           isRefreshing={isRefreshing}
         />
       </div>

@@ -1,16 +1,15 @@
 import React, { useState } from 'react'
 import { Heartbeat } from '../types'
+import { heartbeatWindow } from '../lib/heartbeat'
 import { formatDateTime, formatRelativeTime, formatLatency, formatUptimePercent } from '../lib/format'
 
 interface HeartbeatBarProps {
   heartbeats: Heartbeat[]
-  uptimePercent: number | null
   isRefreshing?: boolean
 }
 
 export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
   heartbeats,
-  uptimePercent,
   isRefreshing = false,
 }) => {
   const [hoveredBeat, setHoveredBeat] = useState<{
@@ -19,9 +18,7 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
     index: number
   } | null>(null)
 
-  // Ensure we have up to 60 slots
-  const realSlots = heartbeats.slice(-60)
-  const slots: Heartbeat[] = [...Array.from({ length: 60 - realSlots.length }, () => ({ status: -1 as const, latency_ms: null, status_code: null, timestamp: 0, message: '等待探测' })), ...realSlots]
+  const { slots, records: realSlots, successPercent } = heartbeatWindow(heartbeats)
 
   return (
     <div className="relative w-full">
@@ -123,9 +120,9 @@ export const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--pulse-text-dim)]">
         <span>{realSlots.length ? formatRelativeTime(realSlots[0].timestamp) : '等待首次探测'}</span>
         <span className="font-mono-numeric font-medium text-emerald-500">
-          {slots.some((s) => s.status === -1)
-             ? `${realSlots.length} 次真实记录`
-             : `${formatUptimePercent(uptimePercent)} 观测可用率`}
+          {realSlots.length
+            ? `最近 ${realSlots.length} 次成功率 ${formatUptimePercent(successPercent)}`
+            : '暂无真实探测记录'}
         </span>
         <span>{realSlots.length ? formatRelativeTime(realSlots.at(-1)!.timestamp) : '暂无记录'}</span>
       </div>
