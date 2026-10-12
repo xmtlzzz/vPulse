@@ -98,7 +98,8 @@
 │                             vPulse Cloudflare Worker                               │
 │                                                                                    │
 │   并发边缘探测 (HEAD / GET，最多 3 项并发 + 瞬时故障重试一次):                         │
-│   ├── vMaker 独立站:    https://vmaker.xmtlz.dev (200 OK)                          │
+│   ├── vMaker 存活接口:  https://vmaker.xmtlz.dev/api/health (每 3 分钟)             │
+│   ├── vMaker 首页渲染:  https://vmaker.xmtlz.dev/ (每 30 分钟)                     │
 │   ├── vBlog 独立博客:   https://vblog.xmtlz.dev (200 OK)                           │
 │   ├── D1/KV 深度探针:   https://vblog.xmtlz.dev/api/health (d1:23ms · kv:6ms)      │
 │   └── 用户自定义监控项:  https://...                                               │
@@ -242,6 +243,10 @@ npm run d1:init:remote
 ```
 
 已有数据库升级只应用 `migrations/` 中的增量迁移，不要重新执行 `schema.sql`，以免重新插入预置监控。部署命令会自动执行迁移。
+
+vMaker 使用两层巡检：`/api/health` 每 3 分钟验证 Worker 存活，不进入 SSR 或查询 GitHub；首页每 30 分钟验证页面访问。首页缓存未命中时仍可能触及免费 Worker 的 CPU 限制，存活成功不代表页面渲染成功。部署前须先确保 vMaker 已提供健康接口。
+
+迁移 `0005_vmaker_health.sql` 只调整原始的 vMaker 首页监控（GET、200、3 分钟且无内容断言），保留历史、暂停和维护设置，重置新接口的当前判定与待发告警。已自定义的 URL、周期、方法或断言不改动；已有首页监控或达到 20 项上限时不另建首页项。新安装默认预置两项。
 
 ### 3. 配置管理员并一键部署到 Cloudflare
 

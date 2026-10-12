@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS incidents (
 -- Seed Initial Monitors for v-Ecosystem
 INSERT OR IGNORE INTO monitors (id, name, group_name, url, method, expected_status, interval_min, timeout_ms, order_num, enabled, created_at)
 VALUES 
-  ('vmaker', 'vMaker 创意作品集', '核心站点', 'https://vmaker.xmtlz.dev', 'GET', 200, 3, 6000, 1, 1, strftime('%s', 'now')),
+  ('vmaker', 'vMaker 存活接口', '核心站点', 'https://vmaker.xmtlz.dev/api/health', 'GET', 200, 3, 6000, 1, 1, strftime('%s', 'now')),
+  ('vmaker-homepage', 'vMaker 首页渲染', '核心站点', 'https://vmaker.xmtlz.dev/', 'GET', 200, 30, 6000, 4, 1, strftime('%s', 'now')),
   ('vblog', 'vBlog 个人独立博客', '核心站点', 'https://vblog.xmtlz.dev', 'GET', 200, 3, 6000, 2, 1, strftime('%s', 'now')),
   ('vblog-api', 'vBlog D1 边缘接口', '边缘服务与存储', 'https://vblog.xmtlz.dev/api/health', 'GET', 200, 3, 5000, 3, 1, strftime('%s', 'now'));
