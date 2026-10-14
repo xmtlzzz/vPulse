@@ -350,13 +350,13 @@ test('shared status cache avoids repeated history scans and invalidates on every
   assert.equal(scans, 1)
   await scheduler.storeProbe({ DB: d.db }, monitor, { status: 0, status_code: 503, latency_ms: null, timestamp: now(), message: 'down' })
   assert.equal((await readStatus(counted)).monitors[0].current_status, 0)
-  assert.equal(scans, 2)
+  assert.equal(scans, 1, 'new probes advance the existing availability checkpoint')
   const created = await dbmod.createMonitor({ name: 'New', url: config.url }, d.db)
   assert.equal((await readStatus(counted)).monitors.length, 2)
-  assert.equal(scans, 3)
+  assert.equal(scans, 2, 'only the new monitor initializes availability')
   await dbmod.removeMonitor(created.id, d.db)
   assert.equal((await readStatus(counted)).monitors.length, 1)
-  assert.equal(scans, 4)
+  assert.equal(scans, 2, 'deleting a monitor does not rebuild surviving monitors')
 })
 
 test('a read racing with a probe cannot publish a cache for the older revision', async (t) => {

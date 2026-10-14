@@ -5,6 +5,7 @@ import { HttpError } from './validation'
 import { probeSingleMonitor, type HeartbeatResult } from './probe'
 import { type Alert } from './alerts'
 import { nextScheduledCheck } from '../src/lib/schedule'
+import { latestHeartbeats } from './latest'
 
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 
@@ -207,12 +208,6 @@ export async function runProbes(
     if (configs.length > MAX_MONITORS)
       throw new HttpError(503, `监控数量超过 ${MAX_MONITORS}，请先减少监控项`)
     const now = nowSeconds()
-    const last = await db
-      .prepare(
-        'SELECT h.monitor_id,MAX(h.timestamp) AS timestamp FROM heartbeats h LEFT JOIN monitor_settings s ON s.monitor_id=h.monitor_id WHERE h.id>COALESCE(s.probe_after_id,0) GROUP BY h.monitor_id'
-      )
-      .all<{ monitor_id: string; timestamp: number }>()
-    const lastById = new Map(last.results.map((row) => [row.monitor_id, row.timestamp]))
     let monitors = configs
     if (options.id) {
       monitors = configs.filter((m) => m.id === options.id)
@@ -221,6 +216,9 @@ export async function runProbes(
           throw new HttpError(409, '项目已暂停或正在维护，请先恢复监控')
         throw new HttpError(404, '监控项不存在')
       }
+    }
+    const lastById = await latestHeartbeats(db, monitors)
+    if (options.id) {
       const checked = lastById.get(options.id)
       if (!options.force && checked !== undefined && now - checked < 30) {
         return {

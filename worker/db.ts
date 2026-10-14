@@ -1,6 +1,7 @@
 import type { MonitorConfig, Monitor, Heartbeat, Incident } from '../src/types'
 import { HttpError, monitorInput } from './validation'
 import { nextScheduledCheck } from '../src/lib/schedule'
+import { availabilityStats } from './availability'
 
 export const MAX_MONITORS = 20
 export function requireDb(db?: D1Database): D1Database {
@@ -189,21 +190,7 @@ export async function fetchMonitorsWithHistory(db?: D1Database): Promise<Monitor
         .bind(m.id)
     )
   )
-  // Time-weighted observed availability; long gaps are unknown. Report coverage too.
-  const stats = await database
-    .prepare(
-      `WITH intervals AS (
-    SELECT h.monitor_id,h.status,h.timestamp,m.interval_min,m.timeout_ms,
-      LEAD(h.timestamp,1,?) OVER (PARTITION BY h.monitor_id ORDER BY h.timestamp,h.id) AS next_ts
-    FROM heartbeats h JOIN monitors m ON m.id=h.monitor_id WHERE h.timestamp>=?
-  ), durations AS (
-    SELECT monitor_id,status,MAX(0,MIN(next_ts,(CAST(timestamp/180 AS INTEGER)+CAST((interval_min+2)/3 AS INTEGER))*180+MAX(60,timeout_ms*2/1000),?)-MAX(timestamp,?)) AS seconds FROM intervals
-  ) SELECT monitor_id,SUM(seconds) AS covered,SUM(CASE WHEN status IN (1,2) THEN seconds ELSE 0 END) AS available
-    FROM durations GROUP BY monitor_id`
-    )
-    .bind(now, cutoff - 7200, now, cutoff)
-    .all<{ monitor_id: string; covered: number; available: number }>()
-  const byId = new Map(stats.results.map((s) => [s.monitor_id, s]))
+  const byId = await availabilityStats(database, monitors, now)
   return monitors.map((m, index) => {
     const heartbeats = histories[index].results.reverse()
     const latest = heartbeats.filter((h) => (h.id ?? 0) > (m.probe_after_id ?? 0)).at(-1)

@@ -1,5 +1,6 @@
 import type { Env } from './env'
-import { createMonitor, removeMonitor, requireDb } from './db'
+import { createMonitor, removeMonitor, requireDb, getAllMonitors } from './db'
+import { latestHeartbeats } from './latest'
 import { readStatus } from './status'
 import { HttpError, monitorInput, readJson } from './validation'
 import { rateLimit, runProbes, storeProbe, withSchedulerLock } from './scheduler'
@@ -146,18 +147,14 @@ async function handle(request: Request, env: Env, ctx?: ExecutionContext): Promi
     return json({ success: true, monitors: (await readStatus(db)).monitors })
   if (url.pathname === '/api/health' && request.method === 'GET') {
     await db.prepare('SELECT 1').first()
-    const rows = await db
-      .prepare(
-        `SELECT m.id,m.interval_min,m.timeout_ms,MAX(CASE WHEN h.id>COALESCE(s.probe_after_id,0) THEN h.timestamp END) AS last_checked
-      FROM monitors m LEFT JOIN heartbeats h ON h.monitor_id=m.id LEFT JOIN monitor_settings s ON s.monitor_id=m.id WHERE m.enabled=1 AND COALESCE(s.maintenance_until,0)<=unixepoch() GROUP BY m.id`
-      )
-      .all<{ id: string; interval_min: number; timeout_ms: number; last_checked: number | null }>()
+    const monitors = await getAllMonitors(db)
+    const latest = await latestHeartbeats(db, monitors)
     const now = Math.floor(Date.now() / 1000)
-    const stale = rows.results.filter(
+    const stale = monitors.filter(
       (m) =>
-        m.last_checked === null ||
+        !latest.has(m.id) ||
         now >
-          nextScheduledCheck(m.last_checked, m.interval_min) +
+          nextScheduledCheck(latest.get(m.id)!, m.interval_min) +
             Math.max(60, (m.timeout_ms * 2) / 1000)
     )
     return json(
