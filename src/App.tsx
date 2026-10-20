@@ -4,6 +4,7 @@ import { OverallStatusBanner } from './components/OverallStatusBanner'
 import { MonitorGroup } from './components/MonitorGroup'
 import { MonitorToolbar } from './components/MonitorToolbar'
 import { IncidentSection } from './components/IncidentSection'
+import { IncidentArchive } from './components/IncidentArchive'
 import { GlobalNavPill } from './components/GlobalNavPill'
 import { AddMonitorModal } from './components/AddMonitorModal'
 import { FloatingNotification } from './components/FloatingNotification'
@@ -31,6 +32,7 @@ export function App() {
   const [networkError, setNetworkError] = useState('')
   const [notice, setNotice] = useState('')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [incidentArchive, setIncidentArchive] = useState<{ id?: string } | null>(null)
   const [management, setManagement] = useState<{ id?: string; tab: 'monitors' | 'history' } | null>(
     null
   )
@@ -334,6 +336,7 @@ export function App() {
           onChange={() => void loadData()}
         />
       )}
+      {incidentArchive && <IncidentArchive initialId={incidentArchive.id} onClose={() => setIncidentArchive(null)} />}
 
       {/* Floating Alert / Status Notification (Zero Layout Shift & Guaranteed Auto-Dismiss) */}
       <FloatingNotification
@@ -373,6 +376,7 @@ export function App() {
               hoveredMonitorId={hoveredMonitorId}
               onHoverMonitor={setHoveredMonitorId}
               onSelectMonitor={handleSelectMonitorFromIncident}
+              onOpenHistory={(id) => setIncidentArchive({ id })}
             />
           </aside>
 

@@ -4,6 +4,7 @@ import { getAllMonitors, MAX_MONITORS, settingsStatement, updateMonitor } from '
 import { deviceList, logout } from './auth'
 import { HttpError, monitorInput, readJson } from './validation'
 import { withSchedulerLock } from './scheduler'
+import { incidentHistory, incidentDetail } from './incidents'
 
 const now = () => Math.floor(Date.now() / 1000)
 const json = (data: unknown, status = 200) =>
@@ -37,6 +38,14 @@ const fields = [
 export async function management(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url),
     db = env.DB
+  if (url.pathname === '/api/incidents' || url.pathname.startsWith('/api/incidents/')) {
+    if (request.method !== 'GET') throw new HttpError(405, '事件历史仅支持查询')
+    if (url.pathname === '/api/incidents') return json(await incidentHistory(url, db))
+    const encoded = url.pathname.slice('/api/incidents/'.length)
+    let id: string
+    try { id = decodeURIComponent(encoded) } catch { throw new HttpError(400, '事件 ID 无效') }
+    return json(await incidentDetail(id, url, db))
+  }
   if (url.pathname === '/api/monitors' && request.method === 'PATCH') {
     const id = monitorId(url),
       body = await readJson(request)

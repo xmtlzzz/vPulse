@@ -6,6 +6,7 @@ import { probeSingleMonitor, type HeartbeatResult } from './probe'
 import { type Alert } from './alerts'
 import { nextScheduledCheck } from '../src/lib/schedule'
 import { latestHeartbeats } from './latest'
+import { ACTIVE_INCIDENT_SQL } from './incidents'
 
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 
@@ -72,10 +73,7 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
       ),
   ]
   const active = await db
-    .prepare(
-      `SELECT i.id FROM incidents i JOIN incident_monitors im ON im.incident_id=i.id
-    WHERE im.monitor_id=? AND i.status!='resolved' LIMIT 1`
-    )
+    .prepare(ACTIVE_INCIDENT_SQL)
     .bind(monitor.id)
     .first<{ id: string }>()
   const needsIncident = result.status !== 1 && !active
@@ -86,6 +84,9 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
           .prepare("UPDATE incidents SET status='resolved',updated_at=?,resolved_at=? WHERE id=?")
           .bind(result.timestamp, result.timestamp, active.id)
       )
+      statements.push(db.prepare(`INSERT INTO incident_updates(incident_id,kind,status,severity,title,description,timestamp)
+        SELECT id,'resolved','resolved',severity,title,?,? FROM incidents WHERE id=?`)
+        .bind(result.message, result.timestamp, active.id))
     } else if (result.status !== 1) {
       const title = `${result.status === 0 ? '服务中断' : '服务降级'}: ${monitor.name}`
       if (active) {
@@ -102,6 +103,9 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
               active.id
             )
         )
+        statements.push(db.prepare(`INSERT INTO incident_updates(incident_id,kind,status,severity,title,description,timestamp)
+          SELECT id,'updated',status,severity,title,description,? FROM incidents WHERE id=?`)
+          .bind(result.timestamp, active.id))
       } else {
         const id = crypto.randomUUID()
         let started = result.timestamp
@@ -122,7 +126,7 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
         statements.push(
           db
             .prepare(
-              "INSERT INTO incidents(id,title,description,severity,status,created_at,updated_at) VALUES(?,?,?,?,'investigating',?,?)"
+              "INSERT INTO incidents(id,title,description,severity,status,created_at,updated_at,monitor_name,monitor_id_snapshot) VALUES(?,?,?,?,'investigating',?,?,?,?)"
             )
             .bind(
               id,
@@ -130,7 +134,9 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
               result.message,
               result.status === 0 ? 'major' : 'minor',
               started,
-              result.timestamp
+              result.timestamp,
+              monitor.name,
+              monitor.id
             )
         )
         statements.push(
@@ -138,6 +144,9 @@ export async function storeProbe(env: Env, monitor: MonitorConfig, result: Heart
             .prepare('INSERT INTO incident_monitors(incident_id,monitor_id) VALUES(?,?)')
             .bind(id, monitor.id)
         )
+        statements.push(db.prepare(`INSERT INTO incident_updates(incident_id,kind,status,severity,title,description,timestamp)
+          SELECT id,'opened',status,severity,title,description,? FROM incidents WHERE id=?`)
+          .bind(result.timestamp, id))
       }
     }
   }

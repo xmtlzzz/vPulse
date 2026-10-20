@@ -7,6 +7,7 @@ import {
   Activity,
   ChevronRight,
   Flame,
+  CalendarDays,
 } from 'lucide-react'
 import { Incident, Monitor } from '../types'
 import { formatDateTime, formatDuration } from '../lib/format'
@@ -17,6 +18,7 @@ interface IncidentSectionProps {
   hoveredMonitorId?: string | null
   onHoverMonitor?: (id: string | null) => void
   onSelectMonitor?: (id: string) => void
+  onOpenHistory?: (id?: string) => void
 }
 
 export const IncidentSection: React.FC<IncidentSectionProps> = ({
@@ -25,6 +27,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
   hoveredMonitorId,
   onHoverMonitor,
   onSelectMonitor,
+  onOpenHistory,
 }) => {
   const [filter, setFilter] = useState<'all' | 'unresolved' | 'resolved'>('all')
 
@@ -42,9 +45,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
     if (filter === 'resolved') return resolvedIncidents
     return incidents
   }, [filter, incidents, activeIncidents, resolvedIncidents])
-
-  const uncertain =
-    monitors.length === 0 || monitors.some((m) => m.stale || m.current_status === -1)
+  const currentUnknown = !monitors.length || monitors.some(m => m.stale || m.current_status === -1)
 
   return (
     <div className="rounded-2xl border border-[var(--pulse-border)] bg-[var(--pulse-card)]/90 backdrop-blur-sm p-4 sm:p-5 shadow-xs transition-all">
@@ -66,7 +67,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
           </span>
         ) : (
           <span className="px-2 py-0.5 text-[10px] font-mono font-medium rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            全站平稳
+            {currentUnknown ? '暂无进行中事件' : '全站平稳'}
           </span>
         )}
       </div>
@@ -83,7 +84,7 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
                 : 'text-[var(--pulse-text-dim)] hover:text-[var(--pulse-text-muted)]'
             }`}
           >
-            全部 ({incidents.length})
+            近期 ({incidents.length})
           </button>
           {activeIncidents.length > 0 && (
             <button
@@ -121,12 +122,10 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
             <div className="rounded-xl border border-[var(--pulse-border)]/60 bg-[var(--pulse-card-hover)]/30 p-3 text-xs">
               <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
                 <ShieldCheck className="h-4 w-4" />
-                <span>{uncertain ? '观测平稳 · 暂无故障' : '系统健康 · 过去 30 天无中断'}</span>
+                <span>{filter === 'resolved' ? '暂无近期恢复记录' : filter === 'unresolved' ? '暂无未解决事件' : '暂无事件记录'}</span>
               </div>
               <p className="mt-1 text-[11px] text-[var(--pulse-text-dim)] leading-relaxed">
-                {uncertain
-                  ? '近期未发生故障事件；边缘定时巡检持续守护中。'
-                  : '全部边缘受控端点均正常响应，无未解决的可用性异常。'}
+                可通过下方事件历史查看更早的故障与恢复记录。
               </p>
             </div>
           </div>
@@ -222,12 +221,19 @@ export const IncidentSection: React.FC<IncidentSectionProps> = ({
                       <span>恢复: {formatDateTime(incident.resolved_at)}</span>
                     </div>
                   )}
+                  {onOpenHistory && <button type="button" className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline"
+                    onClick={(e) => { e.stopPropagation(); onOpenHistory(incident.id) }}>查看事件过程 <span aria-hidden="true">→</span></button>}
                 </div>
               </div>
             )
           })
         )}
       </div>
+      {onOpenHistory && <button type="button" onClick={() => onOpenHistory()}
+        className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg border border-[var(--pulse-border)] py-2.5 text-xs font-medium text-[var(--pulse-text-muted)] hover:text-emerald-500 hover:border-emerald-500/40 transition-colors">
+        <CalendarDays className="h-3.5 w-3.5" /> 查看全部事件历史
+      </button>}
+      <p className="mt-2 text-center text-[10px] text-[var(--pulse-text-dim)]">首页展示当前故障与最近 5 条恢复记录</p>
     </div>
   )
 }

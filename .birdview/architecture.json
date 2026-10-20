@@ -1,0 +1,366 @@
+{
+  "revision": 1,
+  "project": {
+    "name": "vPulse 监控与事件追溯",
+    "revision": "6fb968cd2c3c8c2607d04d399a53bfd900b7313a",
+    "id": "vpulse"
+  },
+  "modules": [
+    {
+      "id": "frontend",
+      "responsibility": "展示监控、最近动态并调用公开接口",
+      "layout": {
+        "row": 1,
+        "column": 0
+      },
+      "ownership": [
+        {
+          "path": "src",
+          "kind": "directory"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "展示监控、最近动态并调用公开接口",
+          "path": "src/App.tsx"
+        }
+      ],
+      "openQuestions": [],
+      "role": "frontend",
+      "name": "状态页界面",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "api",
+      "responsibility": "分派公开查询和管理操作",
+      "layout": {
+        "row": 1,
+        "column": 1
+      },
+      "ownership": [
+        {
+          "path": "worker/index.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/management.ts",
+          "kind": "file"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "分派公开查询和管理操作",
+          "path": "worker/index.ts"
+        }
+      ],
+      "openQuestions": [],
+      "role": "backend",
+      "name": "接口路由",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "status",
+      "responsibility": "读取事件、最近心跳和增量可用率",
+      "layout": {
+        "row": 0,
+        "column": 2
+      },
+      "ownership": [
+        {
+          "path": "worker/db.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/status.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/availability.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/latest.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/incidents.ts",
+          "kind": "file"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "读取事件、最近心跳和增量可用率",
+          "path": "worker/db.ts"
+        }
+      ],
+      "openQuestions": [],
+      "role": "cache",
+      "name": "状态与统计",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "probe",
+      "responsibility": "调度探测并持久化故障与恢复",
+      "layout": {
+        "row": 2,
+        "column": 2
+      },
+      "ownership": [
+        {
+          "path": "worker/probe.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/scheduler.ts",
+          "kind": "file"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "调度探测并持久化故障与恢复",
+          "path": "worker/scheduler.ts"
+        }
+      ],
+      "openQuestions": [],
+      "role": "backend",
+      "name": "巡检与事件生成",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "auth",
+      "responsibility": "校验管理请求和输入",
+      "layout": {
+        "row": 0,
+        "column": 1
+      },
+      "ownership": [
+        {
+          "path": "worker/auth.ts",
+          "kind": "file"
+        },
+        {
+          "path": "worker/validation.ts",
+          "kind": "file"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "校验管理请求和输入",
+          "path": "worker/auth.ts"
+        }
+      ],
+      "openQuestions": [],
+      "role": "security",
+      "name": "管理鉴权",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "alerts",
+      "responsibility": "租约控制告警发送和重试",
+      "layout": {
+        "row": 2,
+        "column": 3
+      },
+      "ownership": [
+        {
+          "path": "worker/alerts.ts",
+          "kind": "file"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "租约控制告警发送和重试",
+          "path": "worker/alerts.ts"
+        }
+      ],
+      "openQuestions": [],
+      "role": "queue",
+      "name": "告警投递",
+      "kind": "local",
+      "status": "supported"
+    },
+    {
+      "id": "database",
+      "responsibility": "保存监控、心跳、事故及缓存",
+      "layout": {
+        "row": 1,
+        "column": 3
+      },
+      "ownership": [
+        {
+          "path": "schema.sql",
+          "kind": "file"
+        },
+        {
+          "path": "migrations",
+          "kind": "directory"
+        }
+      ],
+      "evidence": [
+        {
+          "note": "保存监控、心跳、事故及缓存",
+          "path": "schema.sql"
+        }
+      ],
+      "openQuestions": [],
+      "role": "database",
+      "name": "D1 持久化",
+      "kind": "local",
+      "status": "supported"
+    }
+  ],
+  "mapId": "vpulse-system",
+  "relationships": [
+    {
+      "id": "frontend-api",
+      "visibility": "overview",
+      "label": "请求状态与历史",
+      "from": "frontend",
+      "to": "api",
+      "evidence": [
+        {
+          "note": "请求状态与历史",
+          "path": "src/lib/api.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "request",
+      "status": "supported"
+    },
+    {
+      "id": "api-status",
+      "visibility": "overview",
+      "label": "读取状态与事件",
+      "from": "api",
+      "to": "status",
+      "evidence": [
+        {
+          "note": "读取状态与事件",
+          "path": "worker/index.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "request",
+      "status": "supported"
+    },
+    {
+      "id": "status-database",
+      "visibility": "overview",
+      "label": "索引查询和缓存",
+      "from": "status",
+      "to": "database",
+      "evidence": [
+        {
+          "note": "索引查询和缓存",
+          "path": "worker/db.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "dependency",
+      "status": "supported"
+    },
+    {
+      "id": "api-probe",
+      "visibility": "overview",
+      "label": "管理员触发巡检",
+      "from": "api",
+      "to": "probe",
+      "evidence": [
+        {
+          "note": "管理员触发巡检",
+          "path": "worker/index.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "control",
+      "status": "supported"
+    },
+    {
+      "id": "probe-database",
+      "visibility": "overview",
+      "label": "写入观测及事件",
+      "from": "probe",
+      "to": "database",
+      "evidence": [
+        {
+          "note": "写入观测及事件",
+          "path": "worker/scheduler.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "event",
+      "status": "supported"
+    },
+    {
+      "id": "api-auth",
+      "visibility": "detail",
+      "label": "管理请求鉴权",
+      "from": "api",
+      "to": "auth",
+      "evidence": [
+        {
+          "note": "管理请求鉴权",
+          "path": "worker/index.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "control",
+      "status": "supported"
+    },
+    {
+      "id": "auth-database",
+      "visibility": "detail",
+      "label": "校验设备会话",
+      "from": "auth",
+      "to": "database",
+      "evidence": [
+        {
+          "note": "校验设备会话",
+          "path": "worker/auth.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "dependency",
+      "status": "supported"
+    },
+    {
+      "id": "probe-alerts",
+      "visibility": "detail",
+      "label": "巡检后投递通知",
+      "from": "probe",
+      "to": "alerts",
+      "evidence": [
+        {
+          "note": "巡检后投递通知",
+          "path": "worker/index.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "control",
+      "status": "supported"
+    },
+    {
+      "id": "alerts-database",
+      "visibility": "detail",
+      "label": "维护投递队列",
+      "from": "alerts",
+      "to": "database",
+      "evidence": [
+        {
+          "note": "维护投递队列",
+          "path": "worker/alerts.ts"
+        }
+      ],
+      "openQuestions": [],
+      "kind": "dependency",
+      "status": "supported"
+    }
+  ],
+  "language": "zh",
+  "schemaVersion": 1
+}

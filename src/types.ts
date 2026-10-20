@@ -53,6 +53,9 @@ export interface OverallStatus {
 export interface Incident {
   id: string
   monitor_id?: string | null
+  monitor_name?: string
+  monitor_id_snapshot?: string | null
+  last_activity_at?: number
   title: string
   description: string
   severity: 'minor' | 'major' | 'maintenance'
@@ -60,6 +63,39 @@ export interface Incident {
   created_at: number
   updated_at: number
   resolved_at: number | null
+}
+export interface IncidentUpdate {
+  id: number
+  incident_id: string
+  kind: 'opened' | 'updated' | 'resolved' | 'snapshot'
+  status: Incident['status']
+  severity: Incident['severity']
+  title: string
+  description: string
+  timestamp: number
+}
+export interface IncidentDay {
+  date: string
+  total: number
+  opened: number
+  resolved: number
+  severity: number
+}
+export interface IncidentHistoryResponse {
+  success: boolean
+  month: string
+  day: string | null
+  time_zone: string
+  earliest_month: string | null
+  days: IncidentDay[]
+  incidents: Incident[]
+  next_cursor: string | null
+}
+export interface IncidentDetailResponse {
+  success: boolean
+  incident: Incident
+  updates: IncidentUpdate[]
+  next_cursor: string | null
 }
 export interface StatusResponse {
   success: boolean

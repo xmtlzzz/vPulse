@@ -2,6 +2,7 @@ import type { MonitorConfig, Monitor, Heartbeat, Incident } from '../src/types'
 import { HttpError, monitorInput } from './validation'
 import { nextScheduledCheck } from '../src/lib/schedule'
 import { availabilityStats } from './availability'
+import { RECENT_INCIDENTS_SQL } from './incidents'
 
 export const MAX_MONITORS = 20
 export function requireDb(db?: D1Database): D1Database {
@@ -163,6 +164,10 @@ export async function removeMonitor(id: string, db?: D1Database): Promise<boolea
   const database = requireDb(db)
   const now = Math.floor(Date.now() / 1000)
   const results = await database.batch<{ id: string }>([
+    database.prepare(`INSERT INTO incident_updates(incident_id,kind,status,severity,title,description,timestamp)
+      SELECT i.id,'resolved','resolved',i.severity,i.title,i.description || '（监控项已删除，停止追踪）',?
+      FROM incidents i WHERE i.status!='resolved' AND i.id IN (SELECT incident_id FROM incident_monitors WHERE monitor_id=?)`)
+      .bind(now, id),
     database
       .prepare(
         `UPDATE incidents SET status='resolved',resolved_at=?,updated_at=?,description=description || '（监控项已删除，停止追踪）'
@@ -172,7 +177,7 @@ export async function removeMonitor(id: string, db?: D1Database): Promise<boolea
     database.prepare('DELETE FROM monitors WHERE id=? RETURNING id').bind(id),
     database.prepare("UPDATE status_revision SET revision=revision+1 WHERE key='status'"),
   ])
-  return results[1].results.length > 0
+  return results[2].results.length > 0
 }
 
 export async function fetchMonitorsWithHistory(db?: D1Database): Promise<Monitor[]> {
@@ -228,11 +233,7 @@ export { overallStatus } from '../src/lib/status'
 
 export async function fetchIncidents(db?: D1Database): Promise<Incident[]> {
   const rows = await requireDb(db)
-    .prepare(
-      `SELECT i.*,im.monitor_id FROM incidents i LEFT JOIN incident_monitors im ON im.incident_id=i.id
-    WHERE i.status!='resolved' OR i.id IN (SELECT id FROM incidents WHERE status='resolved' ORDER BY resolved_at DESC LIMIT 5)
-    ORDER BY CASE WHEN i.status='resolved' THEN 1 ELSE 0 END, i.created_at DESC`
-    )
+    .prepare(RECENT_INCIDENTS_SQL)
     .all<Incident>()
   return rows.results
 }
